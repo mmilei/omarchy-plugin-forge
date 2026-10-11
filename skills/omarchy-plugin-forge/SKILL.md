@@ -92,7 +92,28 @@ screenshots and look at them**: the script cannot tell a populated panel from an
 one. If the panel is data-driven, add `.forge/seed` so the shots show real rows. A panel that is empty,
 clipped, or not the color of the theme is not done, even with exit 0.
 
-## 5. Report
+## 5. Measure what it costs
 
-What the plugin does, the final `forge-check.sh` output, the screenshot paths, and anything from section 0 that
-did not match what this skill or its references say. That last item is how the skill stays current.
+A bar widget runs all day, so its idle cost matters more than its features. Before calling it done:
+
+```bash
+<this-skill-dir>/scripts/perf-check.py <plugin-dir> [--seconds 60] [--max-cpu 0.5]
+```
+
+It finds the plugin's long-lived process by its installed path and reads its CPU time from `/proc` (its own plus
+every child it reaped), with the panel closed and then open. It fails when the closed-panel cost is over
+`--max-cpu` (% of one core), or when there is no long-lived process: the plugin must use a `watch` subprocess
+(`reference/patterns.md`, "Keep it cheap"). Comparing the whole shell with and without the plugin was tried and
+dropped: the shell's CPU moves by several points with anything else on screen, more than a plugin costs.
+
+Where the cost usually comes from, cheapest fix first:
+
+- Starting an interpreter per refresh: a Python start alone is ~40 ms of CPU, ~1.4% of a core every 3 s.
+- Refreshing as fast when the panel is closed as when it is open, although the bar shows one number.
+- Scanning more than needed (every process, every repo) on each tick.
+
+## 6. Report
+
+What the plugin does, the final `forge-check.sh` and `perf-check.py` output, the screenshot paths, and anything
+from section 0 that did not match what this skill or its references say. That last item is how the skill stays
+current.

@@ -191,6 +191,33 @@ uses) so it matches the bar; accents and states use `Commons.Color`.
 `visible: root.total > 0` plus `implicitWidth: visible ? button.implicitWidth : 0` on the `BarWidget` root.
 forge-check only screenshots the populated state: say in the report that the empty state was not seen.
 
+## Keep it cheap
+
+A widget refreshes all day; measure with `scripts/perf-check.py` and aim for under 1% of a core with the panel
+closed.
+
+- **One long-lived process, not one per tick.** Spawning `python3` costs ~40 ms of CPU before your code runs. Give
+  the script a `watch --interval N` subcommand that loops and prints one JSON object per line (flush after each),
+  and read it with a `Process` that stays `running: true` and a `SplitParser`:
+
+  ```qml
+  Process {
+    id: watcher
+    running: true
+    command: ["python3", root.script, "watch", "--interval", String(root.opened ? 2 : 15)]
+    stdout: SplitParser { onRead: function(line) { try { root.snap = JSON.parse(line) } catch (e) {} } }
+    onExited: restart.start()          // crashed or interval changed: start again after a pause
+  }
+  Timer { id: restart; interval: 3000; onTriggered: watcher.running = true }
+  ```
+
+  Changing `command` while running does not restart the process: set `running = false` and let `onExited`
+  bring it back with the new interval. Keep `snapshot` as a one-shot subcommand for tests and actions.
+- **Slow down while closed.** The bar usually shows one number; refresh it every 10–30 s, and go fast only while
+  the panel is open.
+- **Compute less when closed.** If the bar needs a total and the panel needs a breakdown (top processes, per-repo
+  details), have the closed-panel tick compute only the total.
+
 ## Demo data for the screenshots
 
 A data-driven panel screenshots empty unless there is data. If the plugin's data can be faked safely, add an
