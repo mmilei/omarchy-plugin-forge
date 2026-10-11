@@ -29,6 +29,12 @@ skills/omarchy-plugin-forge/scripts/forge-check.sh <plugin-dir> [--static]
 5. **Screenshots under two themes** with the panel open. Fails if the panel did not open, restores your theme
    afterwards. Optional `.forge/seed` and `.forge/unseed` put demo data on screen for the shots.
 
+And what it costs, measured on the plugin's own process:
+
+```
+skills/omarchy-plugin-forge/scripts/perf-check.py <plugin-dir> [--seconds 60] [--max-cpu 0.5]
+```
+
 `--static` runs 1–3 only. The full run restarts the shell (the bar blinks for a second) and switches the theme
 twice, so run one at a time.
 
@@ -69,6 +75,24 @@ conversation or to the other examples' history.
 
 After each build, what the agent reported as wrong or missing went back into the skill before the next one.
 
+### What they cost
+
+A bar widget runs all day. The first versions spawned a Python process on every refresh; `perf-check.py`
+made that visible, the skill gained a "Keep it cheap" section (one long-lived `watch` process, slow ticks while
+the panel is closed, cheap change detection), and each example was converted by a fresh agent from that section
+alone.
+
+| Plugin | Before (spawn per refresh) | After (`watch` process, panel closed) |
+|---|---|---|
+| resources | ~4.5% of a core (89 ms every 2 s) | 0.02% |
+| agents-waiting | ~1.4% (43 ms every 3 s) | 0.07% |
+| ports | ~1.4% (41 ms every 3 s, plus `ss`) | 0.03% |
+| dirty-repos | ~0.08% (47 ms every 60 s) | 0.00% |
+
+"Before" is CPU per call × calls per minute; "after" is measured by `perf-check.py` on the plugin's own process
+over 60 s. Measuring the whole shell with and without a plugin was tried first and dropped: the shell's CPU
+moves by several points with anything else on screen.
+
 Install an example by hand:
 
 ```bash
@@ -94,6 +118,7 @@ skills/omarchy-plugin-forge/
   reference/gotchas.md   traps found the hard way
   scripts/forge-check.sh the definition of done
   scripts/color-scan.py  the hardcoded-color check
+  scripts/perf-check.py  CPU and memory of the plugin's own process
 examples/                four plugins built with the skill
 .claude-plugin/          Claude Code plugin and marketplace manifests
 ```
