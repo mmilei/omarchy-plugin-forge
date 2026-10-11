@@ -597,8 +597,44 @@ class QuietParser(argparse.ArgumentParser):
         raise ValueError(message)
 
 
+# Hermes Agent shell hooks pipe {"hook_event_name", "session_id", "cwd", ...} on stdin.
+HERMES_EVENTS = {
+    "pre_llm_call": "working",
+    "post_approval_response": "working",
+    "on_human_input_resolved": "working",
+    "pre_approval_request": "blocked",
+    "on_human_input_request": "blocked",
+    "agent_loop_stopped": "idle",
+}
+
+
+def hermes_hook(state_dir, payload, parent_pid=None, now=None):
+    """Map one Hermes hook payload to report/release. Returns what it did."""
+    session = str(payload.get("session_id") or "")
+    if not session:
+        return None
+    source = f"hermes-{session}"
+    seq = int((time.time() if now is None else now) * 1000)
+    event = payload.get("hook_event_name", "")
+    if event in ("on_session_end", "on_session_finalize"):
+        do_release(state_dir, source, seq, now=now)
+        return "release"
+    state = HERMES_EVENTS.get(event)
+    if state is None:
+        return None
+    do_report(state_dir, source, "hermes", state, seq, cwd=payload.get("cwd") or "",
+              session_id=session, parent_pid=parent_pid, now=now)
+    return state
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "hermes-hook":
+        try:  # same contract as report: exit 0 fast, say nothing
+            hermes_hook(Ctx().state, json.load(sys.stdin), parent_pid=os.getppid())
+        except BaseException:
+            pass
+        return 0
     if cmd in ("report", "release"):
         try:  # hooks call these: exit 0 fast, say nothing
             p = QuietParser(add_help=False)

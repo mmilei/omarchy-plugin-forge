@@ -171,6 +171,28 @@ class ClaudeSource(Base):
         self.assertEqual(self.snap(claude_agents=lambda: [])["rows"], [])
 
 
+class HermesHook(Base):
+    def hook(self, event, now, session="h1"):
+        return aw.hermes_hook(self.state, {"hook_event_name": event, "session_id": session,
+                                           "cwd": "/home/u/notes"}, now=now)
+
+    def test_lifecycle(self):
+        self.assertEqual(self.hook("pre_llm_call", NOW - 50), "working")
+        self.assertEqual(self.hook("pre_approval_request", NOW - 40), "blocked")
+        self.assertEqual(self.snap()["rows"][0]["state"], "blocked")
+        self.assertEqual(self.hook("post_approval_response", NOW - 30), "working")
+        self.assertEqual(self.hook("agent_loop_stopped", NOW - 20), "idle")
+        row = self.snap()["rows"][0]
+        self.assertEqual((row["state"], row["agent"], row["session_id"]), ("waiting", "hermes", "h1"))
+        self.assertEqual(self.hook("on_session_end", NOW - 10), "release")
+        self.assertEqual(self.snap()["rows"], [])
+
+    def test_unknown_event_and_missing_session_ignored(self):
+        self.assertIsNone(self.hook("post_tool_call", NOW))
+        self.assertIsNone(self.hook("pre_llm_call", NOW, session=""))
+        self.assertEqual(self.snap()["rows"], [])
+
+
 class ReportedSource(Base):
     def test_seq_gate_and_release(self):
         self.assertTrue(self.report("s", "hermes", "working", 5))

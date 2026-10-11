@@ -54,6 +54,19 @@ caller, skipping hook shells) and its start time, so the row disappears when tha
 them. Files live in `~/.local/state/mmilei.agents-waiting/reported/`. Nothing in your global config is edited:
 wire the one-liner into whichever hook you like.
 
+### Hermes Agent
+
+`agents-waiting.py hermes-hook` takes a Hermes shell-hook payload on stdin and maps it: `pre_llm_call`,
+`post_approval_response`, `on_human_input_resolved` → working; `pre_approval_request`, `on_human_input_request` →
+blocked; `agent_loop_stopped` → waiting; `on_session_end` → release. The Hermes session id is passed along, so a
+Hermes session inside herdr still shows once.
+
+### Setup skill
+
+[`skill/agents-waiting-setup/`](skill/agents-waiting-setup/SKILL.md) is a short agent skill (Claude Code, Hermes)
+that checks which agents you have, shows the exact `~/.hermes/config.yaml` hooks block and an optional `aw`
+shell helper, and writes them only after you say yes.
+
 ## Click
 
 | Row | Action |
