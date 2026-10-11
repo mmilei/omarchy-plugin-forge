@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "mmilei.resources",
+  "name": "System resources",
+  "version": "0.1.0",
+  "author": "mmilei",
+  "license": "MIT",
+  "description": "CPU and RAM percentages in the bar; the panel shows per-core CPU, RAM and swap, load, temperature and the top CPU processes, with a confirmed terminate action.",
+  "tags": ["system", "monitor"],
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "System resources",
+    "description": "CPU and RAM usage; click for per-core load, memory, temperature and top processes.",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "interval": 2,
+      "processCount": 5
+    },
+    "schema": [
+      {
+        "key": "interval",
+        "type": "number",
+        "label": "Refresh (s)",
+        "defaultValue": 2,
+        "description": "Seconds between samples of /proc."
+      },
+      {
+        "key": "processCount",
+        "type": "number",
+        "label": "Top processes",
+        "defaultValue": 5,
+        "description": "How many CPU-hungry processes the panel lists."
+      }
+    ]
+  }
+}

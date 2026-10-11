@@ -18,7 +18,8 @@ NAMED = (
 )
 PATTERNS = [
     ("hex literal", re.compile(r"""["']#[0-9a-fA-F]{3,8}["']""")),
-    ("named color", re.compile(r"""["'](?:%s)["']""" % NAMED, re.IGNORECASE)),
+    # A name passed as a function argument is a palette key (hue("yellow", …)), not a color.
+    ("named color", re.compile(r"""(?<![(,]\s)(?<![(,])["'](?:%s)["']""" % NAMED, re.IGNORECASE)),
     ("constant Qt color", re.compile(r"Qt\.(?:rgba|hsla|hsva)\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+")),
 ]
 

@@ -65,7 +65,8 @@ Every color comes from the theme so the plugin follows `omarchy-theme-set`:
 - More hues (red, green, blue, yellow…): read `~/.local/state/omarchy/current/theme/colors.toml` with a
   `FileView`, and fall back to a `Commons.Color` role when a key is missing. See `reference/patterns.md`.
 - **Forbidden in QML:** hex literals (`"#33ccff"`), named colors (`"red"`, `"white"`), and `Qt.rgba/hsla/hsva`
-  with constant arguments. `"transparent"` is fine. `forge-check.sh` fails on any of these.
+  with constant arguments. `"transparent"` is fine, and so is a color name passed as a function argument
+  (`hue("yellow", …)` is a palette key). `forge-check.sh` fails on any of the others.
 
 ## 4. Check, fix, repeat
 

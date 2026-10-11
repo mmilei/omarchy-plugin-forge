@@ -183,6 +183,48 @@ demo data behind. `.forge/` ships with the plugin: it documents the states the p
 Anything that kills, deletes or discards asks first, inside the panel: a `ConfirmDialog` from `qs.Ui` or a
 second click on the same row within a few seconds. Never on a single click.
 
+`ConfirmDialog` wiring that works (it does not take keyboard focus on its own, and its default selection is
+Confirm, so a stray Enter would run the action):
+
+```qml
+property var pending: null
+
+function ask(item) { root.pending = item; confirm.selectedIndex = 0; confirmKeys.forceActiveFocus() }
+function cancel() { root.pending = null; keyCatcher.forceActiveFocus() }
+function confirmAction() { /* run the script subcommand with root.pending */ root.cancel() }
+
+PanelKeyCatcher {
+  id: keyCatcher
+  blocked: root.pending !== null          // stop Esc/Tab handling while the dialog is up
+  onCloseRequested: root.close()
+  // …content…
+
+  Item {                                   // hands keys to the dialog while it is open
+    id: confirmKeys
+    Keys.onPressed: function(event) { if (confirm.handleKey(event)) event.accepted = true }
+  }
+
+  ConfirmDialog {
+    id: confirm
+    anchors.fill: parent
+    z: 10
+    opened: root.pending !== null
+    message: root.pending ? "Stop " + root.pending.name + "?" : ""
+    confirmText: "Stop"
+    background: Commons.Color.background
+    foreground: root.fg
+    selectedText: Commons.Color.accent
+    fontFamily: root.fontFamily
+    onOpenedChanged: if (opened) selectedIndex = 0   // 0 = Cancel
+    onCanceled: root.cancel()
+    onConfirmed: root.confirmAction()
+  }
+}
+```
+
+For actions that check a PID, pass its start time too and have the script refuse when it changed (see
+`gotchas.md`, "PIDs from hooks and launchers").
+
 ## Extra theme hues
 
 `Commons.Color` has five roles. For more, read the theme file and fall back to a role:
