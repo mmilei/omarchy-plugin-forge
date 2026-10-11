@@ -225,7 +225,10 @@ closed.
   - **Detect change cheaply while closed.** Fingerprint the inputs (`os.stat` mtime and size of the files you
     read, liveness of the PIDs you showed) and re-parse and print only when the fingerprint moved. Rate-limit any
     subprocess source (`herdr`, `git`, a CLI) to every 10 s or more while closed, and force a full re-read every
-    minute or so for anything that expires on its own.
+    minute or so for anything that expires on its own, or that no file you can stat reflects (editing a tracked
+    file touches nothing under `.git`: a repo watcher still needs a full `git status` every few minutes).
+  - Build the command as an array (`[...].concat(root.watchArgs)` with `watchArgs` a list), never by splitting a
+    string: paths with spaces break.
   - **Print only when something changed.** The watcher may stay silent for many ticks; the QML keeps the last
     object it parsed. Always print once at start and right after `open`.
   - **Tests drive the loop with an injected clock** (`now()`/`wait(timeout)` passed in), never real sleeps.

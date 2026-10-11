@@ -89,7 +89,14 @@ for theme in "$theme_a" "$theme_b"; do
   opened=0
   for _ in 1 2; do
     omarchy-shell -q shell hide "$id" >/dev/null 2>&1; sleep 0.8
+    # Wait for the theme transition to finish: the reference shot must be still,
+    # or the change it causes would pass for the panel opening.
     grim "$shots/.closed.png"
+    for _ in 1 2 3 4 5; do
+      sleep 1; grim "$shots/.closed2.png"
+      (( $(changed "$shots/.closed.png" "$shots/.closed2.png") < 500 )) && break
+      mv "$shots/.closed2.png" "$shots/.closed.png"
+    done
     omarchy-shell shell summon "$id" '{}' >/dev/null 2>&1
     sleep 2
     grim "$file"
@@ -98,7 +105,7 @@ for theme in "$theme_a" "$theme_b"; do
   omarchy-shell -q shell hide "$id" >/dev/null 2>&1
   ((opened)) && echo "shot $file" || fail "panel did not open under $theme (screen unchanged after summon)"
 done
-rm -f "$shots/.closed.png"
+rm -f "$shots/.closed.png" "$shots/.closed2.png"
 [[ -x $dir/.forge/unseed ]] && "$dir/.forge/unseed"
 [[ -n $original ]] && omarchy-theme-set "$original" >/dev/null 2>&1 && echo "theme restored: $original"
 

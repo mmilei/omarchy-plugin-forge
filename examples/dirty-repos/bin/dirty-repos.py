@@ -5,6 +5,14 @@
       JSON: {"root", "depth", "scanned", "count", "repos": [{name, path, branch,
       changed, ahead, behind, upstream, no_upstream}]}. Defaults: ~/git, depth 2.
       Only repos with something pending are listed.
+  dirty-repos.py watch [--root R] [--depth D] [--interval S] [--closed-interval S] [--mode open|closed]
+      One snapshot per line (same shape), until stdin closes. Stdin words: `open` (panel
+      showing: rediscover, rescan everything and print now), `closed`, `stop`; EOF stops it.
+      Open: full rescan every --interval seconds. Closed: every --closed-interval seconds
+      stat each repo's .git/index, HEAD, refs and the work-tree root, and run `git status`
+      only for repos whose fingerprint moved; plus a full rescan every FULL_EVERY seconds
+      (editing a tracked file does not touch those) and re-discovery every DISCOVER_EVERY.
+      Prints at start, on `open`, and afterwards only when the snapshot changed.
   dirty-repos.py open <path>
       Terminal in <path> (xdg-terminal-exec); refuses anything that is not a git work tree.
 
@@ -18,10 +26,13 @@ own repo: they have their own working tree and their own branch, so nothing is c
 Demo hook for .forge/seed: if <plugin>/.forge/demo-root exists, its first line replaces the
 root setting. Stdlib only.
 """
+import argparse
 import json
 import os
+import select
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -33,6 +44,8 @@ SKIP = {
     "vendor", "bower_components", "Pods",
 }
 GIT_TIMEOUT = 15
+FULL_EVERY = 300          # closed: full rescan, for edits that touch no fingerprinted file
+DISCOVER_EVERY = 600      # closed: look for new/removed repos
 DEMO_ROOT = Path(__file__).resolve().parent.parent / ".forge" / "demo-root"
 
 
@@ -130,14 +143,108 @@ def clamp_depth(value):
         return DEFAULT_DEPTH
 
 
+def build(root, depth, repos, rows):
+    rows = sorted((r for r in rows if r), key=lambda r: (r["name"].lower(), r["path"]))
+    return {"root": str(root), "depth": depth, "scanned": len(repos), "count": len(rows),
+            "missing_root": not root.is_dir(), "repos": rows}
+
+
+def inspect_all(repos, inspect_fn=inspect):
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return list(pool.map(inspect_fn, repos))
+
+
 def snapshot(root_arg=None, depth_arg=None):
     root, depth = effective_root(root_arg), clamp_depth(depth_arg)
     repos = find_repos(root, depth) if root.is_dir() else []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        rows = [r for r in pool.map(inspect, repos) if r]
-    rows.sort(key=lambda r: (r["name"].lower(), r["path"]))
-    return {"root": str(root), "depth": depth, "scanned": len(repos), "count": len(rows),
-            "missing_root": not root.is_dir(), "repos": rows}
+    return build(root, depth, repos, inspect_all(repos))
+
+
+def _stat(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def fingerprint(path):
+    """Cheap change marker for one work tree: the stats of .git/index, HEAD, packed-refs and
+    the refs directories, plus the work-tree root. Linked worktrees keep index/HEAD in their
+    own gitdir and refs in the common one."""
+    gitdir = common = path / ".git"
+    if gitdir.is_file():
+        try:
+            gitdir = common = (path / gitdir.read_text().split(":", 1)[1].strip()).resolve()
+            common = (gitdir / Path((gitdir / "commondir").read_text().strip())).resolve() \
+                if (gitdir / "commondir").is_file() else gitdir
+        except (OSError, IndexError):
+            pass
+    return (_stat(gitdir / "index"), _stat(gitdir / "HEAD"), _stat(common / "packed-refs"),
+            _stat(common / "refs"), _stat(common / "refs" / "heads"),
+            _stat(common / "refs" / "remotes"), _stat(path))
+
+
+def stdin_commands(fd=0):
+    """wait(timeout): block up to `timeout` s for a command line on `fd`; return the last
+    word ("open", "closed"), None on timeout, or "stop" on EOF (the shell went away)."""
+    def wait(timeout):
+        ready, _, _ = select.select([fd], [], [], timeout)
+        if not ready:
+            return None
+        data = os.read(fd, 4096)
+        if not data:
+            return "stop"
+        words = data.decode(errors="replace").split()
+        return words[-1] if words else None
+    return wait
+
+
+def watch(out, wait, root_arg=None, depth_arg=None, open_interval=60.0, closed_interval=15.0,
+          mode="closed", now=time.monotonic, find=find_repos, inspect_fn=inspect,
+          fingerprint_fn=fingerprint):
+    """Print one snapshot per line on `out` until `wait` returns "stop".
+
+    `wait(timeout)` is both the sleep and the control channel: None when the timeout
+    elapsed, or "open" / "closed" / "stop". Every external dependency is a parameter.
+    """
+    st = {"repos": [], "fps": {}, "rows": {}, "discovered": None, "full": None, "last": None,
+          "root": None, "depth": None}
+
+    def rescan(repos):
+        for r, row in zip(repos, inspect_all(repos, inspect_fn)):
+            st["rows"][r] = row
+            st["fps"][r] = fingerprint_fn(r)
+
+    def tick(force):
+        t = now()
+        full = force or mode == "open" or st["full"] is None or t - st["full"] >= FULL_EVERY
+        if force or st["discovered"] is None or t - st["discovered"] >= DISCOVER_EVERY:
+            st["root"], st["depth"] = effective_root(root_arg), clamp_depth(depth_arg)
+            st["repos"] = list(find(st["root"], st["depth"])) if st["root"].is_dir() else []
+            st["discovered"] = t
+            gone = set(st["rows"]) - set(st["repos"])
+            for r in gone:
+                del st["rows"][r], st["fps"][r]
+        if full:
+            st["full"] = t
+            rescan(st["repos"])
+        else:
+            rescan([r for r in st["repos"] if r not in st["fps"] or fingerprint_fn(r) != st["fps"][r]])
+        snap = build(st["root"], st["depth"], st["repos"], [st["rows"].get(r) for r in st["repos"]])
+        if force or snap != st["last"]:
+            st["last"] = snap
+            out.write(json.dumps(snap) + "\n")
+            out.flush()
+
+    tick(True)
+    while True:
+        cmd = wait(open_interval if mode == "open" else closed_interval)
+        if cmd == "stop":
+            return
+        if cmd in ("open", "closed"):
+            mode = cmd
+        tick(cmd == "open")
 
 
 def open_terminal(path):
@@ -151,6 +258,20 @@ def open_terminal(path):
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "watch":
+        ap = argparse.ArgumentParser(prog="dirty-repos.py watch")
+        ap.add_argument("--root")
+        ap.add_argument("--depth")
+        ap.add_argument("--interval", type=float, default=60.0)
+        ap.add_argument("--closed-interval", type=float, default=15.0)
+        ap.add_argument("--mode", choices=("open", "closed"), default="closed")
+        a = ap.parse_args(argv[2:])
+        try:
+            watch(sys.stdout, stdin_commands(), a.root, a.depth, max(5.0, a.interval),
+                  max(2.0, a.closed_interval), a.mode)
+        except BrokenPipeError:
+            pass
+        return 0
     if cmd == "snapshot" and len(argv) <= 4:
         print(json.dumps(snapshot(*argv[2:4])))
     elif cmd == "open" and len(argv) == 3:

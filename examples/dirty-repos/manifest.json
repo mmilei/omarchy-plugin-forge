@@ -20,7 +20,8 @@
     "defaults": {
       "root": "~/git",
       "depth": 2,
-      "interval": 60
+      "interval": 60,
+      "closedInterval": 15
     },
     "schema": [
       {
@@ -43,12 +44,22 @@
       {
         "key": "interval",
         "type": "integer",
-        "label": "Refresh (s)",
+        "label": "Refresh, panel open (s)",
         "min": 10,
         "max": 3600,
         "step": 10,
         "defaultValue": 60,
-        "description": "Seconds between scans."
+        "description": "Seconds between full scans while the panel is open."
+      },
+      {
+        "key": "closedInterval",
+        "type": "integer",
+        "label": "Change check, panel closed (s)",
+        "min": 5,
+        "max": 600,
+        "step": 5,
+        "defaultValue": 15,
+        "description": "Seconds between cheap change checks while the panel is closed."
       }
     ]
   }

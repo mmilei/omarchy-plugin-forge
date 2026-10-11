@@ -32,7 +32,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string home: Quickshell.env("HOME")
 
-  function open() { root.controller.show(); root.refresh() }
+  function open() { root.controller.show() }
   function close() { root.controller.hide() }
   function toggle() { root.opened ? root.close() : root.open() }
 
@@ -42,7 +42,9 @@ Panel {
     return false
   }
 
-  function refresh() { if (!snapProc.running) snapProc.running = true }
+  // "open" also means "rediscover, rescan everything and print now".
+  function tell(word) { if (watcher.running) watcher.write(word + "\n") }
+  onOpenedChanged: root.tell(root.opened ? "open" : "closed")
 
   function openRepo(path) {
     actionProc.command = ["python3", root.script, "open", path]
@@ -64,29 +66,31 @@ Panel {
     return parts.join(" · ")
   }
 
-  Timer {
-    interval: Math.max(10, Number(setting("interval", 60))) * 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
-  }
+  readonly property var watchArgs: [
+    "--root", String(setting("root", "~/git")), "--depth", String(setting("depth", 2)),
+    "--interval", String(Math.max(10, Number(setting("interval", 60)))),
+    "--closed-interval", String(Math.max(5, Number(setting("closedInterval", 15))))
+  ]
+  // A changed setting restarts the watcher; onExited brings it back.
+  onWatchArgsChanged: if (watcher.running) watcher.running = false
 
   Process {
-    id: snapProc
-    command: ["python3", root.script, "snapshot",
-              String(setting("root", "~/git")), String(setting("depth", 2))]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        if (!text.length) return
-        try { root.snap = JSON.parse(text); root.error = "" }
+    id: watcher
+    running: true
+    stdinEnabled: true
+    command: ["python3", root.script, "watch", "--mode", root.opened ? "open" : "closed"].concat(root.watchArgs)
+    stdout: SplitParser {
+      onRead: function(line) {
+        try { root.snap = JSON.parse(line); root.error = "" }
         catch (e) { root.error = "unreadable snapshot: " + e }
       }
     }
     stderr: StdioCollector {
       onStreamFinished: if (text.length) root.error = text.trim()
     }
+    onExited: restart.start()
   }
+  Timer { id: restart; interval: 3000; onTriggered: watcher.running = true }
 
   Process {
     id: actionProc

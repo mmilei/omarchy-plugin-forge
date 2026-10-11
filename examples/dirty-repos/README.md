@@ -16,6 +16,15 @@ each row shows the repo name, its branch and what is pending (`N changed files`,
 - **Read-only**: the script only runs `git --no-optional-locks status` and `git remote` (the first does not
   even refresh the index), plus `rev-parse` before opening a terminal.
 
+## How it refreshes
+
+One long-lived `watch` process (`bin/dirty-repos.py watch`), told `open` / `closed` over stdin; it exits on EOF.
+Open: a full scan every `interval` seconds and right when the panel opens. Closed: every `closedInterval`
+seconds it compares a fingerprint of each repo (mtimes of `.git/index`, `HEAD`, `packed-refs`, `refs`, and the
+work-tree root) and runs `git status` only where it moved; a full rescan every 5 minutes catches edits that
+touch none of those, and repos are re-discovered every 10 minutes. It prints only when the result changed.
+`snapshot` stays as a one-shot.
+
 ## Install
 
 ```bash
@@ -29,7 +38,8 @@ omarchy-shell shell rescanPlugins && omarchy plugin enable mmilei.dirty-repos
 |-----|---------|---------|
 | `root` | `~/git` | folder to scan (`~` is expanded) |
 | `depth` | 2 | levels below the root to search (1 to 6) |
-| `interval` | 60 | seconds between scans |
+| `interval` | 60 | seconds between full scans while the panel is open |
+| `closedInterval` | 15 | seconds between change checks while the panel is closed |
 
 ## Development
 
