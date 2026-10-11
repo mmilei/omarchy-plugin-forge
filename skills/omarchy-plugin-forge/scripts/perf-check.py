@@ -105,7 +105,7 @@ def main():
             continue
         paths = [d, os.path.expanduser(f"~/.config/omarchy/plugins/{pid_}")]
         sh("omarchy-shell", "-q", "shell", "hide", pid_)
-        time.sleep(2)
+        time.sleep(10)  # let a panel left open (e.g. by forge-check) settle back to its closed rate
         closed, alive = measure(paths, args.seconds)
         if not alive:
             print(f"{pid_}: FAIL no long-lived process found; use a `watch` subprocess (patterns.md, Keep it cheap)")
@@ -114,7 +114,7 @@ def main():
             continue
         rss = rss_mb(alive)
         sh("omarchy-shell", "shell", "summon", pid_, "{}")
-        time.sleep(2)
+        time.sleep(5)
         opened, _ = measure(paths, args.seconds)
         sh("omarchy-shell", "-q", "shell", "hide", pid_)
         ok = closed <= args.max_cpu

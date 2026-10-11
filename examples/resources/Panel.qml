@@ -19,7 +19,10 @@ Panel {
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
 
+  // snap: latest object from the watcher (bar numbers). detail: latest full one
+  // (per-core, processes...), which only arrives while the panel is open.
   property var snap: null
+  property var detail: null
   property string error: ""
   // Process waiting for the user's yes/no: { pid, start, name } or null.
   property var pendingKill: null
@@ -43,9 +46,9 @@ Panel {
     ? String.fromCodePoint(0xF061A) + " " + Math.round(cpuPercent) + "%  " + String.fromCodePoint(0xF035B) + " " + Math.round(ramPercent) + "%"
     : ""
 
-  property var processes: snap ? snap.processes : []
-  property var cores: snap ? snap.cpu.cores : []
-  readonly property bool hasTemperature: snap !== null && snap.temperature !== null && snap.temperature !== undefined
+  property var processes: detail ? detail.processes : []
+  property var cores: detail ? detail.cpu.cores : []
+  readonly property bool hasTemperature: detail !== null && detail.temperature !== null && detail.temperature !== undefined
 
   // Extra hue for the "getting busy" level; falls back to the accent.
   property var palette: ({})
@@ -85,7 +88,7 @@ Panel {
     return fmtBytes(m.used) + " / " + fmtBytes(m.total) + "  " + Math.round(m.percent) + "%"
   }
 
-  function open() { root.controller.show(); root.refresh() }
+  function open() { root.controller.show() }
   function close() { cancelKill(); root.controller.hide() }
   function toggle() { root.opened ? root.close() : root.open() }
 
@@ -95,7 +98,10 @@ Panel {
     return false
   }
 
-  function refresh() { if (!snapProc.running) snapProc.running = true }
+  // Tell the watcher what to compute: everything while open, bar numbers only
+  // when closed. "open" also means "resample now".
+  function tell(word) { if (watcher.running) watcher.write(word + "\n") }
+  onOpenedChanged: root.tell(root.opened ? "open" : "closed")
 
   function askKill(proc) {
     root.pendingKill = proc
@@ -116,32 +122,39 @@ Panel {
     cancelKill()
   }
 
-  Timer {
-    interval: Math.max(1, Number(setting("interval", 2))) * 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
-  }
+  readonly property string watchArgs: [
+    "--interval", String(Math.max(1, Number(setting("interval", 2)))),
+    "--closed-interval", String(Math.max(1, Number(setting("closedInterval", 10)))),
+    "--top", String(Math.max(1, Math.round(Number(setting("processCount", 5)))))
+  ].join(" ")
+  // A changed setting restarts the watcher; onExited brings it back.
+  onWatchArgsChanged: if (watcher.running) watcher.running = false
 
   Process {
-    id: snapProc
-    command: ["python3", root.script, "snapshot", "--top", String(Math.max(1, Math.round(Number(setting("processCount", 5)))))]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        if (!text.length) return
-        try { root.snap = JSON.parse(text); root.error = "" }
-        catch (e) { root.error = "unreadable snapshot: " + e }
+    id: watcher
+    running: true
+    stdinEnabled: true
+    command: ["python3", root.script, "watch", "--mode", root.opened ? "open" : "closed"].concat(root.watchArgs.split(" "))
+    stdout: SplitParser {
+      onRead: function(line) {
+        try {
+          var obj = JSON.parse(line)
+          root.snap = obj
+          if (obj.full) root.detail = obj
+          root.error = ""
+        } catch (e) { root.error = "unreadable snapshot: " + e }
       }
     }
     stderr: StdioCollector {
       onStreamFinished: if (text.length) root.error = text.trim()
     }
+    onExited: restart.start()
   }
+  Timer { id: restart; interval: 3000; onTriggered: watcher.running = true }
 
   Process {
     id: killProc
-    onExited: root.refresh()
+    onExited: root.tell("open")
     stderr: StdioCollector {
       onStreamFinished: if (text.length) root.error = text.trim()
     }
@@ -182,7 +195,7 @@ Panel {
           Text {
             anchors.right: parent.right
             textFormat: Text.PlainText
-            text: root.snap ? root.snap.ncpu + " cores" : ""
+            text: root.detail ? root.detail.ncpu + " cores" : ""
             color: Qt.alpha(root.fg, 0.6)
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -235,7 +248,7 @@ Panel {
         Meter {
           width: parent.width
           label: "RAM"
-          value: root.snap ? root.fmtMemory(root.snap.ram) : ""
+          value: root.detail ? root.fmtMemory(root.detail.ram) : ""
           fraction: root.ramPercent / 100
           fill: root.levelColor(root.ramPercent)
           foreground: root.fg
@@ -245,9 +258,9 @@ Panel {
         Meter {
           width: parent.width
           label: "Swap"
-          value: root.snap ? root.fmtMemory(root.snap.swap) : ""
-          fraction: root.snap ? root.snap.swap.percent / 100 : 0
-          fill: root.levelColor(root.snap ? root.snap.swap.percent : 0)
+          value: root.detail ? root.fmtMemory(root.detail.swap) : ""
+          fraction: root.detail ? root.detail.swap.percent / 100 : 0
+          fill: root.levelColor(root.detail ? root.detail.swap.percent : 0)
           foreground: root.fg
           fontFamily: root.fontFamily
         }
@@ -263,8 +276,8 @@ Panel {
             id: loadText
             anchors.left: parent.left
             textFormat: Text.PlainText
-            text: root.snap ? "Load  " + root.snap.load.map(function(v) { return v.toFixed(2) }).join("  ") : ""
-            color: root.snap && root.snap.load[0] > root.snap.ncpu ? root.urgent : root.fg
+            text: root.detail ? "Load  " + root.detail.load.map(function(v) { return v.toFixed(2) }).join("  ") : ""
+            color: root.detail && root.detail.load[0] > root.detail.ncpu ? root.urgent : root.fg
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
           }
@@ -273,8 +286,8 @@ Panel {
             anchors.right: parent.right
             visible: root.hasTemperature
             textFormat: Text.PlainText
-            text: root.hasTemperature ? "Temp  " + Math.round(root.snap.temperature) + " °C" : ""
-            color: root.hasTemperature ? root.levelColor(root.snap.temperature) : root.fg
+            text: root.hasTemperature ? "Temp  " + Math.round(root.detail.temperature) + " °C" : ""
+            color: root.hasTemperature ? root.levelColor(root.detail.temperature) : root.fg
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
           }
@@ -290,7 +303,7 @@ Panel {
         }
 
         Text {
-          visible: root.snap !== null && root.processes.length === 0
+          visible: root.detail !== null && root.processes.length === 0
           width: parent.width
           textFormat: Text.PlainText
           text: "Nothing is using the CPU right now."

@@ -24,15 +24,26 @@
     "defaultSection": "right",
     "defaults": {
       "interval": 2,
-      "processCount": 5
+      "processCount": 5,
+      "closedInterval": 10
     },
     "schema": [
       {
         "key": "interval",
         "type": "integer",
-        "label": "Refresh (s)",
+        "label": "Refresh, panel open (s)",
         "defaultValue": 2,
-        "description": "Seconds between samples of /proc.",
+        "description": "Seconds between samples while the panel is open.",
+        "min": 1,
+        "max": 600,
+        "step": 1
+      },
+      {
+        "key": "closedInterval",
+        "type": "integer",
+        "label": "Refresh, panel closed (s)",
+        "defaultValue": 10,
+        "description": "Seconds between bar updates while the panel is closed (CPU and RAM only).",
         "min": 1,
         "max": 600,
         "step": 1

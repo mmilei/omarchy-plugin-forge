@@ -25,13 +25,18 @@ Then place the widget with `omarchy bar move` (default section: right).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `interval` | 2 | seconds between samples |
+| `interval` | 2 | seconds between samples while the panel is open |
+| `closedInterval` | 10 | seconds between bar updates while the panel is closed |
 | `processCount` | 5 | processes listed in the panel |
 
 ## How it works
 
-`bin/resources.py snapshot` samples `/proc` twice, 1 s apart (a CPU tick is 10 ms, so a shorter window makes per-process numbers jump in steps of several %), and prints one JSON object, so percentages are real
-deltas and nothing is stored between runs. `kill PID START` re-reads `/proc/PID/stat` and refuses when the start
+The widget runs one long-lived `bin/resources.py watch` and reads a JSON line per tick. While the panel is
+closed it computes only total CPU % and RAM % (every `closedInterval` s, from two consecutive reads of `/proc/stat`
+and `/proc/meminfo`); when the panel opens the QML writes `open` to its stdin and it adds per-core CPU, swap, load,
+temperature and the top processes every `interval` s, sampling a fresh 1 s window first (a CPU tick is 10 ms, so a
+shorter window makes per-process numbers jump in steps of several %). `snapshot` is the one-shot form (two samples
+1 s apart) used by tests. `kill PID START` re-reads `/proc/PID/stat` and refuses when the start
 time no longer matches the one the panel saw (the PID was reused), when the process belongs to another user, or for
 PID 1. QML only draws; all logic is in the script and covered by `python3 -m unittest discover -s tests`.
 Python stdlib only.

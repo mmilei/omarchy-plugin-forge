@@ -3,11 +3,19 @@
 
 CLI:
   resources.py snapshot [--interval S] [--top N]   # JSON on stdout
+  resources.py watch [--interval S] [--closed-interval S] [--top N] [--mode open|closed]
+                                                  # one JSON object per line, until stdin closes
   resources.py kill PID START_TICKS                # SIGTERM; silent on success
 
 `snapshot` samples /proc twice, `--interval` seconds apart (default 1.0), so
 CPU percentages are real deltas without keeping state between runs.
 A process's CPU is 100 per busy core (like top's Irix mode), so it can pass 100.
+
+`watch` is the long-lived form the widget runs. It keeps the previous /proc
+reading instead of sleeping between two, so a tick costs one read. Commands
+arrive on stdin, one word per line: `open` (panel showing; resample now),
+`closed`, `stop`; EOF also stops it. While closed it prints light objects
+({"full": false, cpu.percent, ram}); while open, full ones like `snapshot`.
 
 `kill` takes the process start time from the snapshot (field 22 of
 /proc/PID/stat) and refuses when it no longer matches: that PID now belongs to
@@ -17,6 +25,7 @@ a different process.
 import argparse
 import json
 import os
+import select
 import signal
 import sys
 import time
@@ -202,15 +211,29 @@ def read_temperature(sys_root=SYS):
 
 # ---- snapshot ----------------------------------------------------------------
 
-def snapshot(interval=DEFAULT_INTERVAL, top=DEFAULT_TOP, proc_root=PROC, sys_root=SYS,
-             sleep=time.sleep, uid=None):
-    uid = os.getuid() if uid is None else uid
-    cpu_a = parse_cpu_times(read_text(Path(proc_root) / "stat"))
-    procs_a = scan_processes(proc_root)
-    sleep(interval)
-    cpu_b = parse_cpu_times(read_text(Path(proc_root) / "stat"))
-    procs_b = scan_processes(proc_root)
+def read_state(proc_root=PROC, procs=True):
+    """One reading of /proc: CPU counters and, when `procs`, every process."""
+    return {
+        "cpu": parse_cpu_times(read_text(Path(proc_root) / "stat")),
+        "procs": scan_processes(proc_root) if procs else None,
+    }
 
+
+def light_snapshot(a, b, proc_root=PROC):
+    """What the bar shows: total CPU % and RAM, from two readings. Cheap: no
+    process scan, no per-core work, no sensors."""
+    mem = memory_summary(parse_meminfo(read_text(Path(proc_root) / "meminfo")))
+    return {
+        "full": False,
+        "cpu": {"percent": round(cpu_percent(a["cpu"].get("cpu", (0, 0)), b["cpu"].get("cpu", (0, 0))), 1)},
+        "ram": mem["ram"],
+    }
+
+
+def full_snapshot(a, b, top=DEFAULT_TOP, proc_root=PROC, sys_root=SYS, uid=None):
+    """Everything the panel draws, from two readings that both include procs."""
+    uid = os.getuid() if uid is None else uid
+    cpu_a, cpu_b = a["cpu"], b["cpu"]
     cores = sorted((k for k in cpu_b if k != "cpu"), key=lambda k: int(k[3:]))
     total_pct = cpu_percent(cpu_a.get("cpu", (0, 0)), cpu_b.get("cpu", (0, 0)))
     per_core = [round(cpu_percent(cpu_a.get(k, (0, 0)), cpu_b[k]), 1) for k in cores]
@@ -221,14 +244,74 @@ def snapshot(interval=DEFAULT_INTERVAL, top=DEFAULT_TOP, proc_root=PROC, sys_roo
 
     mem = memory_summary(parse_meminfo(read_text(Path(proc_root) / "meminfo")))
     return {
+        "full": True,
         "cpu": {"percent": round(total_pct, 1), "cores": per_core},
         "ram": mem["ram"],
         "swap": mem["swap"],
         "load": parse_loadavg(read_text(Path(proc_root) / "loadavg")),
         "ncpu": ncpu,
         "temperature": read_temperature(sys_root),
-        "processes": top_processes(procs_a, procs_b, per_core_delta, top, uid=uid),
+        "processes": top_processes(a["procs"], b["procs"], per_core_delta, top, uid=uid),
     }
+
+
+def snapshot(interval=DEFAULT_INTERVAL, top=DEFAULT_TOP, proc_root=PROC, sys_root=SYS,
+             sleep=time.sleep, uid=None):
+    a = read_state(proc_root)
+    sleep(interval)
+    b = read_state(proc_root)
+    return full_snapshot(a, b, top, proc_root, sys_root, uid)
+
+
+def stdin_commands(fd=0):
+    """Return wait(timeout): block up to `timeout` seconds for a command line
+    on `fd` and return the last word read ("open", "closed"), or None on
+    timeout. "stop" on EOF: the shell went away, so the watcher must too."""
+    def wait(timeout):
+        ready, _, _ = select.select([fd], [], [], timeout)
+        if not ready:
+            return None
+        data = os.read(fd, 4096)
+        if not data:
+            return "stop"
+        words = data.decode(errors="replace").split()
+        return words[-1] if words else None
+    return wait
+
+
+def watch(out, wait, open_interval=2.0, closed_interval=10.0, top=DEFAULT_TOP, mode="closed",
+          proc_root=PROC, sys_root=SYS, uid=None, window=DEFAULT_INTERVAL):
+    """Print one JSON object per line on `out` until `wait` returns "stop".
+
+    `wait(timeout)` is both the sleep and the control channel: it returns None
+    when the timeout elapsed, or a command: "open" (the panel is showing; also
+    means "resample now"), "closed", "stop". While closed, a tick is light
+    (total CPU and RAM); while open it is full, and the first full tick after
+    opening samples a fresh `window` seconds, so process numbers are real deltas.
+    """
+    prev = read_state(proc_root, procs=False)
+    cmd = wait(window)
+    while cmd != "stop":
+        if cmd in ("open", "closed"):
+            mode = cmd
+            if mode == "closed":
+                prev["procs"] = None
+        if mode == "open":
+            if prev["procs"] is None:
+                prev = read_state(proc_root)
+                cmd = wait(window)
+                continue
+            cur = read_state(proc_root)
+            snap = full_snapshot(prev, cur, top, proc_root, sys_root, uid)
+            interval = open_interval
+        else:
+            cur = read_state(proc_root, procs=False)
+            snap = light_snapshot(prev, cur, proc_root)
+            interval = closed_interval
+        prev = cur
+        out.write(json.dumps(snap) + "\n")
+        out.flush()
+        cmd = wait(interval)
 
 
 # ---- actions -----------------------------------------------------------------
@@ -266,6 +349,11 @@ def main(argv=None):
     s = sub.add_parser("snapshot")
     s.add_argument("--interval", type=float, default=DEFAULT_INTERVAL)
     s.add_argument("--top", type=int, default=DEFAULT_TOP)
+    w = sub.add_parser("watch")
+    w.add_argument("--interval", type=float, default=2.0, help="seconds between ticks while the panel is open")
+    w.add_argument("--closed-interval", type=float, default=10.0, help="seconds between ticks while closed")
+    w.add_argument("--top", type=int, default=DEFAULT_TOP)
+    w.add_argument("--mode", choices=("open", "closed"), default="closed")
     k = sub.add_parser("kill")
     k.add_argument("pid", type=int)
     k.add_argument("start", type=int)
@@ -274,6 +362,13 @@ def main(argv=None):
     if args.cmd == "snapshot":
         json.dump(snapshot(max(0.05, args.interval), max(1, args.top)), sys.stdout)
         sys.stdout.write("\n")
+        return 0
+    if args.cmd == "watch":
+        try:
+            watch(sys.stdout, stdin_commands(), max(0.5, args.interval), max(1.0, args.closed_interval),
+                  max(1, args.top), args.mode)
+        except BrokenPipeError:
+            pass
         return 0
     err = kill_process(args.pid, args.start)
     if err:

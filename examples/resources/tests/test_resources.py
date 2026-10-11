@@ -1,5 +1,7 @@
 import importlib.util
+import io
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -154,6 +156,101 @@ class Snapshot(unittest.TestCase):
         snap = json.loads(out.stdout)
         self.assertEqual(len(snap["cpu"]["cores"]), snap["ncpu"])
         self.assertLessEqual(len(snap["processes"]), 5)
+
+
+class Watch(unittest.TestCase):
+    CPU0 = "cpu  0 0 0 0 0 0 0 0\ncpu0 0 0 0 0 0 0 0 0\n"
+    CPU1 = "cpu  50 0 0 50 0 0 0 0\ncpu0 50 0 0 50 0 0 0 0\n"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.proc = Path(self.tmp.name) / "proc"
+        write_proc(self.proc, self.CPU0, MEMINFO, "0 0 0 1/1 1\n", {10: ("busy", 0, 500)})
+
+    def run_watch(self, script, **kw):
+        """script: list of (command-or-None, effect); wait() pops one per call
+        and records the timeout it was given."""
+        out, waits, steps = io.StringIO(), [], list(script)
+
+        def wait(timeout):
+            waits.append(timeout)
+            if not steps:
+                return "stop"
+            cmd, effect = steps.pop(0)
+            if effect:
+                effect()
+            return cmd
+
+        res.watch(out, wait, open_interval=2, closed_interval=10, proc_root=self.proc,
+                  sys_root=self.proc / "nosys", uid=1000, **kw)
+        return [json.loads(line) for line in out.getvalue().splitlines()], waits
+
+    def advance(self, ticks):
+        return lambda: write_proc(self.proc, self.CPU1, MEMINFO, "0 0 0 1/1 1\n", {10: ("busy", ticks, 500)})
+
+    def test_closed_ticks_are_light_and_slow(self):
+        snaps, waits = self.run_watch([(None, self.advance(50)), (None, None)])
+        self.assertEqual(waits, [1.0, 10, 10])  # first wait is the baseline window
+        self.assertEqual(len(snaps), 2)
+        self.assertEqual(snaps[0], {"full": False, "cpu": {"percent": 50.0}, "ram": snaps[0]["ram"]})
+        self.assertEqual(snaps[0]["ram"]["percent"], 75.0)
+
+    def test_closed_does_not_scan_processes(self):
+        calls = []
+        orig = res.scan_processes
+        res.scan_processes = lambda *a, **k: calls.append(1) or orig(*a, **k)
+        self.addCleanup(setattr, res, "scan_processes", orig)
+        self.run_watch([(None, None), (None, None)])
+        self.assertEqual(calls, [])
+
+    def test_open_resamples_then_goes_full(self):
+        snaps, waits = self.run_watch([("open", None), (None, self.advance(100)), (None, None)])
+        # closed baseline wait, resample window after "open", then open interval
+        self.assertEqual(waits[:3], [1.0, 1.0, 2])
+        self.assertEqual([s["full"] for s in snaps], [True, True])
+        self.assertEqual(snaps[0]["cpu"]["cores"], [50.0])
+        self.assertEqual(snaps[0]["processes"][0]["pid"], 10)
+        self.assertEqual(snaps[0]["processes"][0]["cpu"], 100.0)
+
+    def test_closing_goes_back_to_light(self):
+        snaps, waits = self.run_watch([("open", None), (None, self.advance(10)), ("closed", None), (None, None)])
+        self.assertEqual([s["full"] for s in snaps], [True, False, False])
+        self.assertEqual(waits[-2:], [10, 10])
+
+    def test_reopen_resamples_processes(self):
+        snaps, waits = self.run_watch([("open", None), (None, None), ("closed", None), ("open", None), (None, None)])
+        self.assertEqual(waits.count(1.0), 3)  # baseline + one resample per open
+
+    def test_stop_ends_without_output(self):
+        snaps, _ = self.run_watch([("stop", None)])
+        self.assertEqual(snaps, [])
+
+    def test_start_in_open_mode(self):
+        snaps, _ = self.run_watch([(None, None), (None, None)], mode="open")
+        self.assertTrue(snaps[0]["full"])
+
+    def test_stdin_commands(self):
+        r, w = os.pipe()
+        self.addCleanup(lambda: [os.close(fd) for fd in (r,) if True])
+        wait = res.stdin_commands(r)
+        self.assertIsNone(wait(0.01))
+        os.write(w, b"closed\nopen\n")
+        self.assertEqual(wait(1), "open")
+        os.close(w)
+        self.assertEqual(wait(1), "stop")  # EOF
+
+    def test_cli_watch_streams_lines_and_stops_on_eof(self):
+        p = subprocess.Popen([sys.executable, str(SCRIPT), "watch", "--mode", "open"],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        try:
+            snap = json.loads(p.stdout.readline())
+            self.assertTrue(snap["full"])
+            self.assertEqual(len(snap["cpu"]["cores"]), snap["ncpu"])
+        finally:
+            p.stdin.close()
+        self.assertEqual(p.wait(timeout=20), 0)
+        p.stdout.close()
 
 
 class Kill(unittest.TestCase):

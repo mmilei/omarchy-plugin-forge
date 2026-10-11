@@ -204,15 +204,24 @@ closed.
   Process {
     id: watcher
     running: true
-    command: ["python3", root.script, "watch", "--interval", String(root.opened ? 2 : 15)]
+    stdinEnabled: true
+    command: ["python3", root.script, "watch", "--open-interval", "2", "--closed-interval", "15"]
     stdout: SplitParser { onRead: function(line) { try { root.snap = JSON.parse(line) } catch (e) {} } }
-    onExited: restart.start()          // crashed or interval changed: start again after a pause
+    onExited: restart.start()          // crashed: start again after a pause
   }
   Timer { id: restart; interval: 3000; onTriggered: watcher.running = true }
+  onOpenedChanged: if (watcher.running) watcher.write(root.opened ? "open\n" : "closed\n")
   ```
 
-  Changing `command` while running does not restart the process: set `running = false` and let `onExited`
-  bring it back with the new interval. Keep `snapshot` as a one-shot subcommand for tests and actions.
+  - **Mode changes go over stdin**, not by restarting: the script reads `open` / `closed` lines (a reader
+    thread, or `select` with the tick as timeout), switches interval and detail level, and emits a fresh line
+    right away on `open` so the panel does not wait a full tick.
+  - **EOF on stdin means exit**, so a restarted or crashed shell leaves no orphan watcher.
+  - **Keep the previous reading between ticks** for anything computed as a delta (CPU %, per-process CPU): no
+    sampling sleep needed.
+  - Settings that feed the command line still need a restart: bind them into a property and set
+    `watcher.running = false` when it changes, so `onExited` brings it back with the new arguments.
+  - Keep `snapshot` as a one-shot subcommand for tests and actions.
 - **Slow down while closed.** The bar usually shows one number; refresh it every 10–30 s, and go fast only while
   the panel is open.
 - **Compute less when closed.** If the bar needs a total and the panel needs a breakdown (top processes, per-repo
