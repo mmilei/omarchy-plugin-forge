@@ -133,7 +133,7 @@ Panel {
   property var snap: null
   property string error: ""
 
-  function open() { root.controller.show(); root.refresh() }
+  function open() { root.controller.show() }   // the watcher gets "open" through onOpenedChanged
   function close() { root.controller.hide() }
   function toggle() { root.opened ? root.close() : root.open() }
   function refresh() { if (!snapProc.running) snapProc.running = true }
@@ -226,6 +226,8 @@ closed.
     read, liveness of the PIDs you showed) and re-parse and print only when the fingerprint moved. Rate-limit any
     subprocess source (`herdr`, `git`, a CLI) to every 10 s or more while closed, and force a full re-read every
     minute or so for anything that expires on its own.
+  - **Print only when something changed.** The watcher may stay silent for many ticks; the QML keeps the last
+    object it parsed. Always print once at start and right after `open`.
   - **Tests drive the loop with an injected clock** (`now()`/`wait(timeout)` passed in), never real sleeps.
   - Keep `snapshot` as a one-shot subcommand for tests and actions.
 - **Slow down while closed.** The bar usually shows one number; refresh it every 10–30 s, and go fast only while

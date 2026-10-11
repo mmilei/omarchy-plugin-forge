@@ -74,3 +74,11 @@ terminal through `xdg-terminal-exec` (it honors the Omarchy default terminal), e
 Under software rendering (`llvmpipe`, typical in a VM) text and simple bars are fine, but per-frame animation in
 the shell's JS is slow: a ~600-node force layout cost ~100 ms per frame. Keep panels static or animate with
 QML `Behavior`/`NumberAnimation`, not JS loops.
+
+## Reading the kernel instead of spawning tools
+
+Many "run a tool and parse it" sources have a cheaper `/proc` equivalent. Listening TCP sockets: `/proc/net/tcp`
+and `/proc/net/tcp6` (state `0A` is LISTEN; the `uid` and `inode` columns tell whose socket it is), mapped to
+PIDs through the `socket:[inode]` links in `/proc/<pid>/fd`. The mapping is the costly part: do it only when the
+`(port, inode)` set changed or the panel is open. CPU and memory: `/proc/stat`, `/proc/meminfo`. Check the result
+against the tool once (`ss -ltnpH`) before trusting it.

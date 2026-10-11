@@ -23,15 +23,26 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "interval": 3
+      "interval": 3,
+      "closedInterval": 5
     },
     "schema": [
       {
         "key": "interval",
         "type": "integer",
-        "label": "Refresh (s)",
+        "label": "Refresh, panel open (s)",
         "defaultValue": 3,
-        "description": "Seconds between port scans.",
+        "description": "Seconds between port scans while the panel is open.",
+        "min": 1,
+        "max": 600,
+        "step": 1
+      },
+      {
+        "key": "closedInterval",
+        "type": "integer",
+        "label": "Refresh, panel closed (s)",
+        "defaultValue": 5,
+        "description": "Seconds between checks for new or closed ports while the panel is closed (count only).",
         "min": 1,
         "max": 600,
         "step": 1
