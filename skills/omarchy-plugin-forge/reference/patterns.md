@@ -178,6 +178,18 @@ executable `.forge/seed` (writes demo data) and `.forge/unseed` (removes exactly
 folder; `forge-check.sh` runs them around the screenshots. Never seed into the user's real data, and never leave
 demo data behind. `.forge/` ships with the plugin: it documents the states the panel can show.
 
+- Seed runs on the real desktop: demo rows appear next to live ones (a real server, a real session). That is
+  fine; write the demo data so it is obviously demo (`api-gateway`, `landing-page`).
+- If seed starts processes, record the **real** PID. `(cd d && cmd &)` gives you the subshell's PID: unseed then
+  kills the wrapper and the servers survive. `cd` first and background the command itself, or use
+  `subprocess.Popen(..., start_new_session=True)`. After unseed, check with `pgrep` that nothing is left.
+
+## Per-row action buttons
+
+`PanelActionButton` from `qs.Ui`: `iconText` (a Nerd Font glyph), `tooltipText`, `foreground`, `hoverColor`,
+`size`, and `onClicked`. Use `root.fg` for `foreground` and `Commons.Color.accent` (or `urgent` for destructive
+actions) for `hoverColor`.
+
 ## Destructive actions
 
 Anything that kills, deletes or discards asks first, inside the panel: a `ConfirmDialog` from `qs.Ui` or a

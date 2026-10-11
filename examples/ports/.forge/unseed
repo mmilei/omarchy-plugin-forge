@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stops exactly the servers .forge/seed started and removes their temp dirs.
+state=${PORTS_FORGE_STATE:-${XDG_RUNTIME_DIR:-/tmp}/mmilei.ports-forge}
+[[ -f $state/pids ]] && kill $(<"$state/pids") 2>/dev/null
+rm -rf "$state"

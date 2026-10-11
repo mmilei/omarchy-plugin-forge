@@ -34,6 +34,12 @@ Write down, before coding: what the bar shows (glyph, count, short text), what t
 offers, where the data comes from, and how often it refreshes. Ask only if the data source is ambiguous;
 everything else takes a sensible default.
 
+Check that every external command the script needs exists on this machine (`command -v ss git xdg-open …`) and
+list them in the plugin README under requirements.
+
+`forge-check.sh` takes screenshots but never clicks: actions (open, stop, confirm) are covered only by the
+script's tests. Test every action subcommand, and say in the report which flows nobody exercised by hand.
+
 ## 2. Layout
 
 ```

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Demo data for forge-check: three throwaway http.servers on free high ports,
+# each started inside its own temp dir named like a project (that dir becomes
+# the process cwd shown in the panel). .forge/unseed stops them.
+state=${PORTS_FORGE_STATE:-${XDG_RUNTIME_DIR:-/tmp}/mmilei.ports-forge}
+mkdir -p "$state"
+: > "$state/pids"
+for name in api-gateway landing-page docs-site; do
+  mkdir -p "$state/$name"; cd "$state/$name" || exit 1
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+  # Backgrounding the command itself (no subshell list) makes $! the server's own pid.
+  setsid python3 -m http.server "$port" --bind 127.0.0.1 >/dev/null 2>&1 &
+  echo $! >> "$state/pids"
+  sleep 0.3
+done
+sleep 0.5

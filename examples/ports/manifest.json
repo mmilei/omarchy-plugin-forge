@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "mmilei.ports",
+  "name": "Ports in use",
+  "version": "0.1.0",
+  "author": "mmilei",
+  "license": "MIT",
+  "description": "Shows how many TCP ports your processes are listening on; the panel lists port, process and project folder, and can open the port in the browser or stop the process.",
+  "tags": ["developer", "network"],
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Ports in use",
+    "description": "Count of your listening TCP ports; click for the list.",
+    "category": "Development",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "interval": 3
+    },
+    "schema": [
+      {
+        "key": "interval",
+        "type": "number",
+        "label": "Refresh (s)",
+        "defaultValue": 3,
+        "description": "Seconds between port scans."
+      }
+    ]
+  }
+}
