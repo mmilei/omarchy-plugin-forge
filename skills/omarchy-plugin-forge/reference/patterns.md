@@ -179,6 +179,17 @@ uses) so it matches the bar; accents and states use `Commons.Color`.
 - Actions are subcommands (`kill <pid>`, `open <path>`), idempotent where possible, and print nothing on success.
 - Python stdlib only, so `omarchy plugin add` needs no install step.
 - Tests call the functions directly with fixtures (temp dirs, fake command output), never the live system.
+  **Inject every external command** (`hyprctl`, `ss`, `git`, a CLI fallback) in the base test class: forge-check
+  runs the tests on the real machine, and an un-injected fallback silently calls the real tool.
+- Rows that actions refer to carry a stable `key` (`source:id`), and the action subcommands take that key, not a
+  list index.
+- State the plugin keeps between runs (acknowledged rows, first-seen times, rate-limit timestamps) goes in
+  `~/.local/state/<plugin-id>/`, one small JSON file each, written atomically (temp file + `os.replace`).
+
+## A widget that hides when empty
+
+`visible: root.total > 0` plus `implicitWidth: visible ? button.implicitWidth : 0` on the `BarWidget` root.
+forge-check only screenshots the populated state: say in the report that the empty state was not seen.
 
 ## Demo data for the screenshots
 

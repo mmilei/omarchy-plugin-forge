@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Removes exactly what .forge/seed created.
-state=${AGENTS_WAITING_STATE:-$HOME/.local/state/mmilei.agents-waiting/sessions}
-[[ -f $state/.forge-demo-pids ]] && kill $(<"$state/.forge-demo-pids") 2>/dev/null
-rm -f "$state"/forge-demo-*.json "$state/.forge-demo-pids"
+here=$(cd "$(dirname "$0")" && pwd)
+[[ -f $here/demo-root ]] || exit 0
+demo=$(<"$here/demo-root")
+if [[ $demo == /tmp/agents-waiting-demo-* && -d $demo ]]; then
+  [[ -f $demo/pids ]] && kill $(<"$demo/pids") 2>/dev/null
+  rm -rf "$demo"
+fi
+rm -f "$here/demo-root"

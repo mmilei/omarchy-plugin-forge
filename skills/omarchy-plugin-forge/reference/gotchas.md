@@ -45,9 +45,23 @@ silently.
 ## PIDs from hooks and launchers
 
 Hook commands (Claude Code, Hermes) run under an intermediate `sh`, so the hook's `getppid()` is that shell, not
-the agent, and it is gone a moment later. Walk up `/proc` to the process you mean (match on `comm` or
-`cmdline`). Store its start time too (`/proc/<pid>/stat` field 22) and compare it later: PIDs get reused, and a
-bare PID check will call a new, unrelated process alive.
+the agent, and it is gone a moment later. Walk up `/proc` to the process you mean, matching on `argv[0]` (or
+`argv[1]` for interpreters like `python`/`node`) and skipping shells. Do not match the whole `cmdline`: the hook's
+own `sh -c '... --agent hermes'` contains the agent's name. Store the start time too (`/proc/<pid>/stat` field
+22) and compare it later: PIDs get reused, and a bare PID check will call a new, unrelated process alive.
+
+## Several sources for the same thing
+
+When two sources can see the same object (an agent seen by its own state files and by a terminal multiplexer),
+join before rendering: by a shared id first (a session id), then by context (a variable inherited through the
+environment, readable at `/proc/<pid>/environ` for the user's own processes), and keep the more precise source's
+state. Unit-test every combination with fixtures; duplicates are the first thing a user notices.
+
+## Demo data the shell can see
+
+The panel's `Process` runs under the shell's environment, not forge-check's, so environment variables set by
+`.forge/seed` never reach it. To relocate a data source for screenshots, have the script read a plugin-local
+pointer file (`.forge/demo-root`) that seed writes and unseed deletes, and gitignore it.
 
 ## Opening things
 

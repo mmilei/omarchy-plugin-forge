@@ -5,9 +5,10 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// Popup listing Claude Code sessions: project, state, time since the state
-// changed. Clicking a row focuses that session's terminal window. All data
-// and the focus action live in bin/agents-waiting.py.
+// Popup listing coding agents (Claude Code, herdr panes, reported agents), one
+// row each: title, state, agent, time since the state changed. Clicking a row
+// focuses it (and acknowledges a finished one). All data and the open action
+// live in bin/agents-waiting.py.
 Panel {
   id: root
   moduleName: "mmilei.agents-waiting"
@@ -22,6 +23,7 @@ Panel {
   property string error: ""
 
   readonly property int waitingCount: snap ? snap.waiting : 0
+  readonly property int totalCount: snap ? snap.total : 0
   readonly property string script:
     decodeURIComponent(Qt.resolvedUrl("bin/agents-waiting.py").toString().replace("file://", ""))
 
@@ -42,21 +44,22 @@ Panel {
 
   function refresh() { if (!snapProc.running) snapProc.running = true }
 
-  function focusSession(id) {
-    focusProc.command = ["python3", root.script, "focus", id]
+  function openRow(key) {
+    focusProc.command = ["python3", root.script, "open", key]
     focusProc.running = true
     root.close()
   }
 
-  function stateText(state) {
-    if (state === "permission") return "needs permission"
-    if (state === "waiting") return "waiting for your message"
+  function stateText(r) {
+    if (r.state === "blocked") return "needs you"
+    if (r.state === "waiting") return "your move"
+    if (r.state === "done") return r.unread ? "finished" : "done"
     return "working"
   }
 
-  function stateColor(state) {
-    if (state === "permission") return root.urgent
-    if (state === "waiting") return root.accent
+  function stateColor(r) {
+    if (r.state === "blocked") return root.urgent
+    if (r.state === "waiting" || (r.state === "done" && r.unread)) return root.accent
     return Qt.alpha(root.fg, 0.45)
   }
 
@@ -67,7 +70,7 @@ Panel {
     return Math.floor(s / 86400) + "d"
   }
 
-  property var sessions: snap ? snap.sessions : []
+  property var rows: snap ? snap.rows : []
 
   Timer {
     interval: setting("interval", 3) * 1000
@@ -125,7 +128,7 @@ Panel {
           height: header.implicitHeight
           PanelSectionHeader {
             id: header
-            text: "CLAUDE CODE SESSIONS"
+            text: "AGENTS"
             foreground: root.fg
             fontFamily: root.fontFamily
           }
@@ -143,25 +146,26 @@ Panel {
         PanelSeparator { foreground: root.fg }
 
         Text {
-          visible: root.sessions.length === 0
+          visible: root.rows.length === 0
           width: parent.width
           wrapMode: Text.WordWrap
           textFormat: Text.PlainText
-          text: "No sessions. Sessions appear after their next hook event."
+          text: "No agents running."
           color: Qt.alpha(root.fg, 0.6)
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
         }
 
         Repeater {
-          model: root.sessions
+          model: root.rows
           delegate: Rectangle {
             id: row
             required property var modelData
             width: content.width
             height: rowText.implicitHeight + Style.space(12)
             radius: Style.space(6)
-            color: rowArea.containsMouse ? Commons.Util.alpha(root.accent, 0.18) : "transparent"
+            color: rowArea.containsMouse ? Commons.Util.alpha(root.accent, 0.18)
+             : (row.modelData.unread ? Commons.Util.alpha(root.accent, 0.08) : "transparent")
 
             Rectangle {
               id: dot
@@ -171,7 +175,7 @@ Panel {
               width: Style.space(9)
               height: width
               radius: width / 2
-              color: root.stateColor(row.modelData.state)
+              color: root.stateColor(row.modelData)
             }
 
             Column {
@@ -186,18 +190,19 @@ Panel {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: row.modelData.project
+                text: row.modelData.title
                 color: root.fg
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
-                font.bold: row.modelData.state !== "working"
+                font.bold: row.modelData.state !== "working" && !(row.modelData.state === "done" && !row.modelData.unread)
               }
               Text {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: root.stateText(row.modelData.state)
-                color: root.stateColor(row.modelData.state)
+                text: root.stateText(row.modelData) + " \u00b7 " + row.modelData.agent_label
+                      + (row.modelData.project ? " \u00b7 " + row.modelData.project : "")
+                color: root.stateColor(row.modelData)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
               }
@@ -220,7 +225,7 @@ Panel {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: root.focusSession(row.modelData.session_id)
+              onClicked: root.openRow(row.modelData.key)
             }
           }
         }

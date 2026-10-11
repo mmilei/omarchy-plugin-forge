@@ -62,7 +62,7 @@ conversation or to the other examples' history.
 
 | Plugin | What it does | Built by |
 |---|---|---|
-| [agents-waiting](examples/agents-waiting/) | Lights up when a Claude Code session is waiting for you; click a row to focus its terminal | Claude Code subagent (Sonnet) |
+| [agents-waiting](examples/agents-waiting/) | Inbox of coding agents waiting for you (Claude Code, herdr, reported); click a row to focus it | Claude Code subagent (Sonnet) |
 | [ports](examples/ports/) | Ports your dev servers listen on; open in the browser or stop the process | Claude Code subagent (Sonnet) |
 | [dirty-repos](examples/dirty-repos/) | Git repos with uncommitted or unpushed work; open a terminal there | Claude Code subagent (Sonnet) |
 | [resources](examples/resources/) | CPU, RAM, swap, load and top processes | Hermes Agent (Sonnet) |

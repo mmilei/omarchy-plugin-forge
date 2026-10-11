@@ -4,7 +4,8 @@ import qs.Commons as Commons
 import qs.Ui
 
 // Bar item: a robot glyph that lights up in the accent color, with the count,
-// while at least one Claude Code session is waiting for the user.
+// while at least one agent is blocked or waiting for the user. Hidden entirely
+// when no agent is running anywhere.
 BarWidget {
   id: root
   moduleName: "mmilei.agents-waiting"
@@ -26,8 +27,10 @@ BarWidget {
   function closeForPopoutSwitch() { if (panelLoader.item) panelLoader.item.closeForPopoutSwitch() }
 
   readonly property int waitingCount: panelLoader.item ? panelLoader.item.waitingCount : 0
+  readonly property int totalCount: panelLoader.item ? panelLoader.item.totalCount : 0
 
-  implicitWidth: button.implicitWidth
+  visible: totalCount > 0
+  implicitWidth: totalCount > 0 ? button.implicitWidth : 0
   implicitHeight: button.implicitHeight
   onBarChanged: injectPanel()
   onSettingsChanged: injectPanel()

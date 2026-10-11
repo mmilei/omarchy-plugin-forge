@@ -1,24 +1,68 @@
 #!/usr/bin/env python3
-"""Demo sessions for forge-check screenshots: one per state, backed by throwaway
-`sleep` processes so the liveness check keeps them. .forge/unseed removes them."""
+"""Demo data for forge-check screenshots: rows from all three sources, including
+one Claude session and one Hermes session that also appear in the (fake) herdr
+snapshot and must show up once. Everything lives in a temp dir that
+bin/agents-waiting.py picks up through .forge/demo-root; the real ~/.claude and
+the real state dir are never touched. .forge/unseed removes it all."""
 import json
-import os
 import pathlib
 import subprocess
+import tempfile
 import time
 
-state = pathlib.Path(os.environ.get(
-    "AGENTS_WAITING_STATE",
-    pathlib.Path.home() / ".local/state/mmilei.agents-waiting/sessions"))
-state.mkdir(parents=True, exist_ok=True)
-demo = [("permission", "~/code/api-gateway", 40), ("waiting", "~/code/landing-page", 300),
-        ("working", "~/code/data-pipeline", 15)]
+here = pathlib.Path(__file__).resolve().parent
+demo = pathlib.Path(tempfile.mkdtemp(prefix="agents-waiting-demo-"))
+(demo / "claude/sessions").mkdir(parents=True)
+(demo / "claude/projects/-demo").mkdir(parents=True)
+(demo / "state/reported").mkdir(parents=True)
+now = time.time()
 pids = []
-for i, (st, cwd, ago) in enumerate(demo):
+
+
+def live():
     proc = subprocess.Popen(["sleep", "900"], start_new_session=True)
-    starttime = int(pathlib.Path(f"/proc/{proc.pid}/stat").read_text().rpartition(")")[2].split()[19])
-    (state / f"forge-demo-{i}.json").write_text(json.dumps({
-        "session_id": f"forge-demo-{i}", "cwd": os.path.expanduser(cwd), "state": st,
-        "since": time.time() - ago, "pid": proc.pid, "starttime": starttime}))
     pids.append(proc.pid)
-(state / ".forge-demo-pids").write_text(" ".join(map(str, pids)))
+    start = pathlib.Path(f"/proc/{proc.pid}/stat").read_text().rpartition(")")[2].split()[19]
+    return proc.pid, start
+
+
+def claude(sid, status, cwd, title, ago, kind="interactive"):
+    pid, start = live()
+    (demo / f"claude/sessions/{pid}.json").write_text(json.dumps({
+        "pid": pid, "sessionId": sid, "cwd": cwd, "kind": kind, "name": "", "status": status,
+        "statusUpdatedAt": int((now - ago) * 1000), "procStart": start}))
+    (demo / f"claude/projects/-demo/{sid}.jsonl").write_text(
+        json.dumps({"type": "ai-title", "aiTitle": title, "sessionId": sid}) + "\n")
+
+
+def reported(source, agent, state, cwd, message, ago, session_id="", seq=1):
+    pid, start = live()
+    (demo / f"state/reported/{source}.json").write_text(json.dumps({
+        "source": source, "agent": agent, "state": state, "seq": seq, "message": message, "cwd": cwd,
+        "session_id": session_id, "since": now - ago, "ts": now - ago, "pid": pid, "pstart": int(start),
+        "herdr_pane": None}))
+
+
+def pane(pane_id, status, cwd, agent, session=None, title=""):
+    p = {"pane_id": pane_id, "agent_status": status, "cwd": cwd, "agent": agent, "title": title,
+         "terminal_title_stripped": title, "state_change_seq": 1}
+    if session:
+        p["agent_session"] = {"source": "hook", "agent": agent, "kind": "id", "value": session}
+    return p
+
+
+claude("demo-api", "waiting", "/home/demo/api-gateway", "Add rate limiting to the gateway", 40)   # in herdr
+claude("demo-landing", "idle", "/home/demo/landing-page", "Fix hero layout on mobile", 300)
+claude("demo-pipeline", "busy", "/home/demo/data-pipeline", "Backfill March events", 900, kind="bg")
+reported("hermes-desktop", "hermes", "idle", "/home/demo/notes", "Summarize the week", 1500)
+reported("hermes-herdr", "hermes", "blocked", "/home/demo/infra", "Approve: terraform apply?", 90,
+         session_id="hermes-s1")                                                                    # in herdr
+(demo / "herdr.json").write_text(json.dumps({"result": {"snapshot": {"agents": [], "panes": [
+    pane("w1:p1", "working", "/home/demo/api-gateway", "claude", session="demo-api"),
+    pane("w1:p2", "idle", "/home/demo/infra", "hermes", session="hermes-s1"),
+    pane("w1:p3", "done", "/home/demo/billing", "codex", title="Migrate invoices table"),
+    pane("w1:p4", "working", "/home/demo/docs", "pi", title="Rewrite the install guide"),
+    pane("w1:p5", "unknown", "/home/demo", None),
+]}}}))
+(demo / "pids").write_text(" ".join(map(str, pids)))
+(here / "demo-root").write_text(str(demo))

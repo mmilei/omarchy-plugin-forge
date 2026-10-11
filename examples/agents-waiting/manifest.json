@@ -5,9 +5,10 @@
   "version": "0.1.0",
   "author": "mmilei",
   "license": "MIT",
-  "description": "Lights up the bar when a Claude Code session is waiting for you; the panel lists the sessions and focuses the terminal of the one you click.",
+  "description": "An inbox of coding agents waiting for you (Claude Code, herdr, anything that reports its state); lights up the bar and focuses the one you click.",
   "tags": [
     "claude-code",
+    "herdr",
     "agents"
   ],
   "kinds": [
@@ -18,7 +19,7 @@
   },
   "barWidget": {
     "displayName": "Agents waiting",
-    "description": "Count of Claude Code sessions waiting for you; click for the list.",
+    "description": "Count of coding agents waiting for you; hidden when none run. Click for the list.",
     "category": "Productivity",
     "allowMultiple": false,
     "defaultSection": "right",
@@ -31,7 +32,7 @@
         "type": "integer",
         "label": "Refresh (s)",
         "defaultValue": 3,
-        "description": "Seconds between reads of the session state files.",
+        "description": "Seconds between reads of the three sources.",
         "min": 1,
         "max": 600,
         "step": 1
