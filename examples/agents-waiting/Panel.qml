@@ -32,7 +32,7 @@ Panel {
   readonly property color urgent: Commons.Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  function open() { root.controller.show(); root.refresh() }
+  function open() { root.controller.show() }
   function close() { root.controller.hide() }
   function toggle() { root.opened ? root.close() : root.open() }
 
@@ -42,7 +42,10 @@ Panel {
     return false
   }
 
-  function refresh() { if (!snapProc.running) snapProc.running = true }
+  // Tell the watcher what to do: full snapshots every few seconds while open
+  // (and one right away), quiet change detection when closed.
+  function tell(word) { if (watcher.running) watcher.write(word + "\n") }
+  onOpenedChanged: root.tell(root.opened ? "open" : "closed")
 
   function openRow(key) {
     focusProc.command = ["python3", root.script, "open", key]
@@ -72,28 +75,30 @@ Panel {
 
   property var rows: snap ? snap.rows : []
 
-  Timer {
-    interval: setting("interval", 3) * 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
-  }
+  readonly property string watchArgs: [
+    "--interval", String(Math.max(1, Number(setting("interval", 3)))),
+    "--closed-interval", String(Math.max(1, Number(setting("closedInterval", 2))))
+  ].join(" ")
+  // A changed setting restarts the watcher; onExited brings it back.
+  onWatchArgsChanged: if (watcher.running) watcher.running = false
 
   Process {
-    id: snapProc
-    command: ["python3", root.script, "snapshot"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        if (!text.length) return
-        try { root.snap = JSON.parse(text); root.error = "" }
+    id: watcher
+    running: true
+    stdinEnabled: true
+    command: ["python3", root.script, "watch", "--mode", root.opened ? "open" : "closed"].concat(root.watchArgs.split(" "))
+    stdout: SplitParser {
+      onRead: function(line) {
+        try { root.snap = JSON.parse(line); root.error = "" }
         catch (e) { root.error = "unreadable snapshot: " + e }
       }
     }
     stderr: StdioCollector {
       onStreamFinished: if (text.length) root.error = text.trim()
     }
+    onExited: restart.start()
   }
+  Timer { id: restart; interval: 3000; onTriggered: watcher.running = true }
 
   Process {
     id: focusProc

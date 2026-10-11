@@ -205,7 +205,8 @@ closed.
     id: watcher
     running: true
     stdinEnabled: true
-    command: ["python3", root.script, "watch", "--open-interval", "2", "--closed-interval", "15"]
+    command: ["python3", root.script, "watch", "--mode", root.opened ? "open" : "closed",
+              "--interval", "2", "--closed-interval", "15"]
     stdout: SplitParser { onRead: function(line) { try { root.snap = JSON.parse(line) } catch (e) {} } }
     onExited: restart.start()          // crashed: start again after a pause
   }
@@ -221,6 +222,11 @@ closed.
     sampling sleep needed.
   - Settings that feed the command line still need a restart: bind them into a property and set
     `watcher.running = false` when it changes, so `onExited` brings it back with the new arguments.
+  - **Detect change cheaply while closed.** Fingerprint the inputs (`os.stat` mtime and size of the files you
+    read, liveness of the PIDs you showed) and re-parse and print only when the fingerprint moved. Rate-limit any
+    subprocess source (`herdr`, `git`, a CLI) to every 10 s or more while closed, and force a full re-read every
+    minute or so for anything that expires on its own.
+  - **Tests drive the loop with an injected clock** (`now()`/`wait(timeout)` passed in), never real sleeps.
   - Keep `snapshot` as a one-shot subcommand for tests and actions.
 - **Slow down while closed.** The bar usually shows one number; refresh it every 10–30 s, and go fast only while
   the panel is open.

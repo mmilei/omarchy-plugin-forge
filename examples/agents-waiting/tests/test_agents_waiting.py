@@ -1,6 +1,10 @@
 import importlib.util
+import io
 import json
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -439,6 +443,136 @@ class OpenAction(Base):
 
     def test_unknown_key(self):
         self.assertFalse(aw.open_row(self.ctx(), "nope"))
+
+
+class Watch(Base):
+    """watch() with injected time: wait(timeout) advances the clock and pops a script step."""
+
+    def setUp(self):
+        super().setUp()
+        self.herdr_calls = 0
+        fake_proc(self.proc, 100, "claude", 1, start=1000)
+        claude_file(self.claude, 100, "sess-A", status="busy")
+
+    def herdr(self):
+        self.herdr_calls += 1
+        return self.herdr_snap
+
+    def run_watch(self, script, **kw):
+        """script: list of (command-or-None, effect), one per wait() call."""
+        ctx = self.ctx(herdr=self.herdr)
+        out, waits, steps = io.StringIO(), [], list(script)
+
+        def wait(timeout):
+            waits.append(timeout)
+            ctx._now += timeout
+            if not steps:
+                return "stop"
+            cmd, effect = steps.pop(0)
+            if effect:
+                effect()
+            return cmd
+
+        aw.watch(out, wait, ctx, **kw)
+        return [json.loads(line) for line in out.getvalue().splitlines()], waits
+
+    def blocked(self):
+        claude_file(self.claude, 100, "sess-A", status="waiting")
+
+    def test_first_line_is_immediate_and_quiet_ticks_print_nothing(self):
+        snaps, waits = self.run_watch([(None, None)] * 3, closed_interval=2)
+        self.assertEqual(len(snaps), 1)
+        self.assertEqual(snaps[0]["total"], 1)
+        self.assertEqual(waits, [2, 2, 2, 2])
+
+    def test_session_turning_blocked_shows_on_the_next_closed_tick(self):
+        snaps, _ = self.run_watch([(None, None), (None, self.blocked), (None, None)], closed_interval=2)
+        self.assertEqual([s["waiting"] for s in snaps], [0, 1])
+
+    def test_dead_agent_process_is_noticed_without_a_file_change(self):
+        def kill():
+            (self.proc / "100" / "stat").unlink()
+        snaps, _ = self.run_watch([(None, None), (None, kill), (None, None)], closed_interval=2)
+        self.assertEqual([s["total"] for s in snaps], [1, 0])
+
+    def test_reported_file_change_is_noticed(self):
+        snaps, _ = self.run_watch([(None, None), (None, lambda: self.report("hook-1", "codex", "blocked", 1)),
+                                   (None, None)], closed_interval=2)
+        self.assertEqual([s["total"] for s in snaps], [1, 2])
+
+    def test_herdr_called_at_most_every_10s_while_closed(self):
+        self.run_watch([(None, None)] * 12, closed_interval=2, herdr_every=10)
+        # ticks at t = 0, 2, ..., 24: herdr at 0, 10, 20
+        self.assertEqual(self.herdr_calls, 3)
+
+    def test_herdr_change_is_picked_up_on_its_tick(self):
+        def appear():
+            self.herdr_snap = {"panes": [pane("p1", status="blocked", agent="codex")]}
+        snaps, _ = self.run_watch([(None, appear)] + [(None, None)] * 6, closed_interval=2, herdr_every=10)
+        self.assertEqual([s["total"] for s in snaps], [1, 2])
+
+    def test_open_emits_now_and_every_open_interval_with_herdr_each_tick(self):
+        snaps, waits = self.run_watch([("open", None), (None, None), (None, None)],
+                                      closed_interval=2, open_interval=3)
+        self.assertEqual(len(snaps), 4)  # start, open, two open ticks
+        self.assertEqual(waits[:4], [2, 3, 3, 3])
+        self.assertEqual(self.herdr_calls, 4)
+
+    def test_closed_after_open_goes_quiet_again(self):
+        snaps, waits = self.run_watch([("open", None), ("closed", None), (None, None), (None, None)],
+                                      closed_interval=2, open_interval=3)
+        self.assertEqual(len(snaps), 2)
+        self.assertEqual(waits[-2:], [2, 2])
+
+    def test_full_reparse_every_minute_for_ttl_expiry(self):
+        snaps, _ = self.run_watch([(None, None)] * 40, closed_interval=2, full_every=60)
+        self.assertEqual(len(snaps), 2)  # t=0 and t=60
+
+    def test_fallback_reparse_waits_for_herdr_tick(self):
+        shutil.rmtree(self.claude / "sessions")
+        agents = []
+        ctx = self.ctx(herdr=self.herdr, claude_agents=lambda: agents.append(1) or [])
+        out, steps = io.StringIO(), [None] * 8
+
+        def wait(timeout):
+            ctx._now += timeout
+            return steps.pop(0) if steps else "stop"
+
+        aw.watch(out, wait, ctx, closed_interval=2, herdr_every=10, full_every=1000)
+        # rebuilt at t=0, 10 only (ticks 0..16); claude agents --json is rate limited to 30 s
+        self.assertEqual(len(out.getvalue().splitlines()), 2)
+        self.assertEqual(len(agents), 1)
+
+    def test_start_in_open_mode_and_stop_without_extra_output(self):
+        snaps, _ = self.run_watch([("stop", None)], mode="open")
+        self.assertEqual(len(snaps), 1)
+        snaps, _ = self.run_watch([("stop", None)])
+        self.assertEqual(len(snaps), 1)
+
+    def test_stdin_commands(self):
+        r, w = os.pipe()
+        self.addCleanup(os.close, r)
+        wait = aw.stdin_commands(r)
+        self.assertIsNone(wait(0.01))
+        os.write(w, b"closed\nopen\n")
+        self.assertEqual(wait(1), "open")
+        os.close(w)
+        self.assertEqual(wait(1), "stop")  # EOF
+
+    def test_cli_watch_streams_a_line_and_exits_on_eof(self):
+        env = dict(os.environ, AGENTS_WAITING_STATE=str(self.state), AGENTS_WAITING_CLAUDE_DIR=str(self.claude),
+                   AGENTS_WAITING_HERDR_SNAPSHOT=str(Path(self.tmp.name) / "none.json"))
+        p = subprocess.Popen([sys.executable, str(SCRIPT), "watch"], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, text=True, env=env)
+        try:
+            self.assertIn("rows", json.loads(p.stdout.readline()))
+            p.stdin.write("open\n")
+            p.stdin.flush()
+            self.assertIn("rows", json.loads(p.stdout.readline()))
+        finally:
+            p.stdin.close()
+        self.assertEqual(p.wait(timeout=20), 0)
+        p.stdout.close()
 
 
 if __name__ == "__main__":

@@ -24,15 +24,26 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "interval": 3
+      "interval": 3,
+      "closedInterval": 2
     },
     "schema": [
       {
         "key": "interval",
         "type": "integer",
-        "label": "Refresh (s)",
+        "label": "Refresh, panel open (s)",
         "defaultValue": 3,
-        "description": "Seconds between reads of the three sources.",
+        "description": "Seconds between reads of the three sources while the panel is open.",
+        "min": 1,
+        "max": 600,
+        "step": 1
+      },
+      {
+        "key": "closedInterval",
+        "type": "integer",
+        "label": "Check, panel closed (s)",
+        "defaultValue": 2,
+        "description": "Seconds between cheap change checks while the panel is closed (herdr is asked every 10 s).",
         "min": 1,
         "max": 600,
         "step": 1

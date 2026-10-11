@@ -95,7 +95,16 @@ Clicking a done row also acknowledges it (stored in `~/.local/state/mmilei.agent
 
 ## Settings
 
-`interval`: seconds between refreshes (default 3).
+`interval`: seconds between refreshes while the panel is open (default 3).
+`closedInterval`: seconds between cheap change checks while it is closed (default 2).
+
+## Cost
+
+One long-lived `watch` process, not a Python start per refresh. Open, it re-reads everything every `interval`.
+Closed, each tick only stats `~/.claude/sessions`, the reported dir and the known agent PIDs, and re-parses when
+one moved (plus once a minute for expiry); `herdr api snapshot` is asked at most every 10 s. A session that becomes
+blocked or waiting shows up within `closedInterval` seconds, a herdr-only pane within 10 s. `snapshot` stays as the
+one-shot form.
 
 ## Tests
 

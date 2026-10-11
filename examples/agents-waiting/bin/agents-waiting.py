@@ -13,6 +13,8 @@ listed once (see join_rows).
 
 CLI:
   agents-waiting.py snapshot                       # JSON on stdout
+  agents-waiting.py watch [--mode open|closed] [--interval S] [--closed-interval S]
+                          [--herdr-every S]        # long-lived: one JSON line per change
   agents-waiting.py open KEY                       # ack a done row, then focus it
   agents-waiting.py report --source ID --agent NAME --state idle|working|blocked|done
                            --seq N [--message TEXT] [--cwd DIR] [--session-id ID]
@@ -32,6 +34,7 @@ import argparse
 import glob
 import json
 import os
+import select
 import subprocess
 import sys
 import tempfile
@@ -499,7 +502,12 @@ def load_json(path, default):
 
 
 def snapshot(ctx):
-    claude, _ = claude_rows(ctx)
+    return build(ctx)[0]
+
+
+def build(ctx):
+    """(snapshot, claude_used_fallback)."""
+    claude, used_fallback = claude_rows(ctx)
     reported = reported_rows(ctx)
     herdr_snap = ctx.herdr()
     panes = herdr_entries(herdr_snap)
@@ -549,7 +557,86 @@ def snapshot(ctx):
         "waiting": sum(1 for r in rows if r["state"] in ATTENTION),
         "total": len(rows),
         "rows": rows,
-    }
+    }, used_fallback
+
+
+# ---- watch ---------------------------------------------------------------------
+
+def dir_stamp(path):
+    """Cheap change marker for a directory: its own mtime plus (name, mtime, size) of each file."""
+    try:
+        out = [os.stat(path).st_mtime_ns]
+        with os.scandir(path) as it:
+            for entry in it:
+                st = entry.stat()
+                out.append((entry.name, st.st_mtime_ns, st.st_size))
+        return tuple(sorted(out, key=str))
+    except OSError:
+        return None
+
+
+def stamps(ctx):
+    return dir_stamp(ctx.claude_dir / "sessions"), dir_stamp(ctx.reported_dir)
+
+
+def alive_pids(ctx, rows):
+    return tuple(sorted(r["pid"] for r in rows if r.get("pid") and read_stat(r["pid"], ctx.proc_root)))
+
+
+def stdin_commands(fd=0):
+    """wait(timeout): block up to `timeout` seconds for a command line on `fd`
+    and return the last word ("open", "closed"), None on timeout, "stop" on EOF
+    (the shell went away, so the watcher must too)."""
+    def wait(timeout):
+        ready, _, _ = select.select([fd], [], [], timeout)
+        if not ready:
+            return None
+        data = os.read(fd, 4096)
+        if not data:
+            return "stop"
+        words = data.decode(errors="replace").split()
+        return words[-1] if words else None
+    return wait
+
+
+def watch(out, wait, ctx, open_interval=3.0, closed_interval=2.0, herdr_every=10.0,
+          full_every=60.0, mode="closed"):
+    """Print one snapshot JSON line on `out` whenever something changed, until
+    `wait` returns "stop".
+
+    `wait(timeout)` is both the sleep and the control channel: None when the
+    timeout elapsed, else "open" (panel showing; also "emit now"), "closed" or
+    "stop". Open: a full snapshot every `open_interval`. Closed: a tick every
+    `closed_interval` that only stats the sessions/reported dirs and the known
+    PIDs, re-parses when they moved, and asks herdr (a subprocess) at most every
+    `herdr_every` seconds. A full re-parse also happens every `full_every`
+    seconds (TTL expiry) and whenever the Claude fallback is in use."""
+    real_herdr = ctx.herdr
+    herdr = {"snap": None, "at": None}
+    ctx.herdr = lambda: herdr["snap"]
+    last_fp, full_at, fallback, rows = None, None, False, []
+    cmd = None
+    while cmd != "stop":
+        force = False
+        if cmd in ("open", "closed"):
+            mode, force = cmd, cmd == "open"
+        now = ctx.now
+        herdr_due = mode == "open" or herdr["at"] is None or now - herdr["at"] >= herdr_every
+        herdr_changed = False
+        if herdr_due:
+            fresh = real_herdr()
+            herdr_changed = fresh != herdr["snap"]
+            herdr["snap"], herdr["at"] = fresh, now
+        stamp = stamps(ctx)
+        if (force or mode == "open" or last_fp is None or herdr_changed
+                or (stamp, alive_pids(ctx, rows)) != last_fp
+                or (fallback and herdr_due) or now - full_at >= full_every):
+            snap, fallback = build(ctx)
+            rows = snap["rows"]
+            last_fp, full_at = (stamp, alive_pids(ctx, rows)), now
+            out.write(json.dumps(snap) + "\n")
+            out.flush()
+        cmd = wait(open_interval if mode == "open" else closed_interval)
 
 
 # ---- open (ack + focus) --------------------------------------------------------
@@ -658,6 +745,23 @@ def main(argv):
         return 0
     if cmd == "snapshot":
         print(json.dumps(snapshot(Ctx())))
+        return 0
+    if cmd == "watch":
+        p = QuietParser(add_help=False)
+        p.add_argument("--mode", default="closed", choices=("open", "closed"))
+        p.add_argument("--interval", type=float, default=3.0)
+        p.add_argument("--closed-interval", type=float, default=2.0)
+        p.add_argument("--herdr-every", type=float, default=10.0)
+        try:
+            args, _ = p.parse_known_args(argv[2:])
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        try:
+            watch(sys.stdout, stdin_commands(), Ctx(), max(0.5, args.interval),
+                  max(0.5, args.closed_interval), max(1.0, args.herdr_every), mode=args.mode)
+        except (BrokenPipeError, KeyboardInterrupt):
+            pass
         return 0
     if cmd == "open" and len(argv) > 2:
         return 0 if open_row(Ctx(), argv[2]) else 1
