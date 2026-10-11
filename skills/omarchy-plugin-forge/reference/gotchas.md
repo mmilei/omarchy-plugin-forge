@@ -38,7 +38,16 @@ restart; check the file path in the message.
 
 The shell runs under Hyprland; `hyprctl -j clients` lists windows with `pid`, `address` and `workspace`.
 Focus one with `hyprctl dispatch focuswindow address:<address>`. The terminal emulator owns the window, not the
-program inside it: walk up the process tree from a PID to find the window.
+program inside it: walk up the process tree (`/proc/<pid>/stat`, field 4 is the parent) from a PID until one
+matches a client. Inside tmux or screen there is no window among the ancestors; say so instead of failing
+silently.
+
+## PIDs from hooks and launchers
+
+Hook commands (Claude Code, Hermes) run under an intermediate `sh`, so the hook's `getppid()` is that shell, not
+the agent, and it is gone a moment later. Walk up `/proc` to the process you mean (match on `comm` or
+`cmdline`). Store its start time too (`/proc/<pid>/stat` field 22) and compare it later: PIDs get reused, and a
+bare PID check will call a new, unrelated process alive.
 
 ## Opening things
 

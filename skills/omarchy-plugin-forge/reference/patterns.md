@@ -90,6 +90,16 @@ BarWidget {
 }
 ```
 
+### A bar icon that lights up
+
+`BarIconButton` (through `WidgetButton`) has `active` and `activeColor`. `activeColor` defaults to the theme's
+urgent color; for "something needs attention but nothing is wrong", use the accent:
+
+```qml
+active: root.count > 0
+activeColor: Commons.Color.accent
+```
+
 ## Panel.qml: draws, never computes
 
 ```qml
@@ -130,28 +140,43 @@ Panel {
     stderr: StdioCollector { onStreamFinished: if (text.length) root.error = text.trim() }
   }
 
+  readonly property color fg: bar ? bar.foreground : Commons.Color.foreground
+  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+
   KeyboardPanel {
     id: panel
     anchorItem: root.anchorItem
     owner: root.barIdentity
     bar: root.bar
     open: root.opened
-    // contentWidth: panel.fittedContentWidth(...) — see the weather Panel.qml for the current signature
-    PanelKeyCatcher { /* Esc closes */ }
-    // PanelSectionHeader, PanelSeparator, rows…
+    focusTarget: keyCatcher
+    contentWidth: panel.fittedContentWidth(Style.space(360))
+    contentHeight: panel.fittedContentHeight(content.implicitHeight)
+
+    PanelKeyCatcher { id: keyCatcher /* Esc closes */ }
+    Column { id: content /* PanelSectionHeader, PanelSeparator, rows… */ }
   }
 }
 ```
 
 Copy the exact `KeyboardPanel` / `PanelKeyCatcher` wiring from the installed weather `Panel.qml`; their
-properties change between releases.
+properties change between releases. Inside the panel, text uses `root.fg` and `root.fontFamily` (what the bar
+uses) so it matches the bar; accents and states use `Commons.Color`.
 
 ## Script contract
 
-- `bin/<name>.py snapshot` prints one JSON object on stdout and exits 0. Errors go to stderr with exit 1.
+- `bin/<name>.py snapshot` prints one JSON object on stdout and exits 0. Errors go to stderr with exit 1. Other
+  subcommands (actions, hooks, printing config) follow their own contract; document it in the script docstring.
 - Actions are subcommands (`kill <pid>`, `open <path>`), idempotent where possible, and print nothing on success.
 - Python stdlib only, so `omarchy plugin add` needs no install step.
 - Tests call the functions directly with fixtures (temp dirs, fake command output), never the live system.
+
+## Demo data for the screenshots
+
+A data-driven panel screenshots empty unless there is data. If the plugin's data can be faked safely, add an
+executable `.forge/seed` (writes demo data) and `.forge/unseed` (removes exactly what seed wrote) in the plugin
+folder; `forge-check.sh` runs them around the screenshots. Never seed into the user's real data, and never leave
+demo data behind. `.forge/` ships with the plugin: it documents the states the panel can show.
 
 ## Destructive actions
 

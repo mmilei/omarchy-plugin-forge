@@ -41,7 +41,8 @@ everything else takes a sensible default.
   manifest.json        # kinds: ["bar-widget"], entryPoints.barWidget
   BarWidget.qml        # bar button + Loader of Panel.qml
   Panel.qml            # the popup; draws only
-  bin/<name>.py        # data and actions; prints JSON; stdlib only
+  bin/<name>.py        # data and actions; `snapshot` prints JSON; stdlib only
+  .forge/seed, unseed  # optional: demo data for forge-check screenshots (reference/patterns.md)
   tests/test_<name>.py # unittest for the script
   README.md            # what it does, install, settings
 ```
@@ -74,12 +75,14 @@ Every color comes from the theme so the plugin follows `omarchy-theme-set`:
 
 It validates the manifest, runs the tests, scans the QML for hardcoded colors, links and enables the plugin,
 restarts the shell, fails on any journal error or warning that mentions the plugin, opens the panel and takes
-screenshots under two themes. It restores the user's theme when done. The restart makes the bar blink for a
-second: warn the user before the first run.
+screenshots under two themes (failing if the screen did not change when the panel was summoned). It restores
+the user's theme when done. The restart makes the bar blink for a second: warn the user before the first run.
+Only one forge-check at a time on a machine: two runs restart the same shell and switch the same theme.
 
-On failure, read the step that failed and fix the cause. Do not weaken the check. When it passes, look at the
-screenshots it printed. A panel that is empty, clipped, or not the color of the theme is not done, even with
-exit 0.
+On failure, read the step that failed and fix the cause. Do not weaken the check. When it passes, **open the
+screenshots and look at them**: the script cannot tell a populated panel from an empty, clipped or off-theme
+one. If the panel is data-driven, add `.forge/seed` so the shots show real rows. A panel that is empty,
+clipped, or not the color of the theme is not done, even with exit 0.
 
 ## 5. Report
 

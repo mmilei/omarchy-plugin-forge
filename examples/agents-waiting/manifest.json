@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "mmilei.agents-waiting",
+  "name": "Agents waiting",
+  "version": "0.1.0",
+  "author": "mmilei",
+  "license": "MIT",
+  "description": "Lights up the bar when a Claude Code session is waiting for you; the panel lists the sessions and focuses the terminal of the one you click.",
+  "tags": ["claude-code", "agents"],
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Agents waiting",
+    "description": "Count of Claude Code sessions waiting for you; click for the list.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "interval": 3
+    },
+    "schema": [
+      {
+        "key": "interval",
+        "type": "number",
+        "label": "Refresh (s)",
+        "defaultValue": 3,
+        "description": "Seconds between reads of the session state files."
+      }
+    ]
+  }
+}

@@ -75,15 +75,31 @@ IFS=, read -r theme_a theme_b <<<"${FORGE_THEMES:-Catppuccin Latte,Tokyo Night}"
 [[ $original == "$theme_b" ]] && theme_b="Gruvbox"
 shots="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-plugin-forge/$id"
 mkdir -p "$shots"
+# Optional demo data so the shots show a populated panel: <plugin>/.forge/seed
+# runs before the screenshots and <plugin>/.forge/unseed after.
+[[ -x $dir/.forge/seed ]] && { "$dir/.forge/seed" && echo "seeded demo data" || fail ".forge/seed"; }
+
+# Changed pixels between two shots; the panel opening must change the screen.
+changed() { magick compare -metric AE -fuzz 2% "$1" "$2" null: 2>&1 | cut -d' ' -f1 | cut -d. -f1; }
+
 for theme in "$theme_a" "$theme_b"; do
   omarchy-theme-set "$theme" >/dev/null 2>&1 || { fail "theme-set $theme"; continue; }
   sleep 3
-  omarchy-shell shell summon "$id" '{}' >/dev/null 2>&1 || fail "summon $id"
-  sleep 1.5
   file="$shots/${theme// /-}.png"
-  grim "$file" && echo "shot $file"
+  opened=0
+  for _ in 1 2; do
+    omarchy-shell -q shell hide "$id" >/dev/null 2>&1; sleep 0.8
+    grim "$shots/.closed.png"
+    omarchy-shell shell summon "$id" '{}' >/dev/null 2>&1
+    sleep 2
+    grim "$file"
+    (( $(changed "$shots/.closed.png" "$file") > 2000 )) && { opened=1; break; }
+  done
   omarchy-shell -q shell hide "$id" >/dev/null 2>&1
+  ((opened)) && echo "shot $file" || fail "panel did not open under $theme (screen unchanged after summon)"
 done
+rm -f "$shots/.closed.png"
+[[ -x $dir/.forge/unseed ]] && "$dir/.forge/unseed"
 [[ -n $original ]] && omarchy-theme-set "$original" >/dev/null 2>&1 && echo "theme restored: $original"
 
 step "journal since restart"
