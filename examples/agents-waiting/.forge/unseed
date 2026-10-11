@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Removes exactly what .forge/seed created.
+state=${AGENTS_WAITING_STATE:-$HOME/.local/state/mmilei.agents-waiting/sessions}
+[[ -f $state/.forge-demo-pids ]] && kill $(<"$state/.forge-demo-pids") 2>/dev/null
+rm -f "$state"/forge-demo-*.json "$state/.forge-demo-pids"

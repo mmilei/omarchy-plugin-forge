@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Demo sessions for forge-check screenshots: one per state, backed by throwaway
+`sleep` processes so the liveness check keeps them. .forge/unseed removes them."""
+import json
+import os
+import pathlib
+import subprocess
+import time
+
+state = pathlib.Path(os.environ.get(
+    "AGENTS_WAITING_STATE",
+    pathlib.Path.home() / ".local/state/mmilei.agents-waiting/sessions"))
+state.mkdir(parents=True, exist_ok=True)
+demo = [("permission", "~/code/api-gateway", 40), ("waiting", "~/code/landing-page", 300),
+        ("working", "~/code/data-pipeline", 15)]
+pids = []
+for i, (st, cwd, ago) in enumerate(demo):
+    proc = subprocess.Popen(["sleep", "900"], start_new_session=True)
+    starttime = int(pathlib.Path(f"/proc/{proc.pid}/stat").read_text().rpartition(")")[2].split()[19])
+    (state / f"forge-demo-{i}.json").write_text(json.dumps({
+        "session_id": f"forge-demo-{i}", "cwd": os.path.expanduser(cwd), "state": st,
+        "since": time.time() - ago, "pid": proc.pid, "starttime": starttime}))
+    pids.append(proc.pid)
+(state / ".forge-demo-pids").write_text(" ".join(map(str, pids)))
