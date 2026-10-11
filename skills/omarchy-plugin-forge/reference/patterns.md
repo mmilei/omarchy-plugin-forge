@@ -23,14 +23,23 @@ Shapes that work with omarchy-shell 4.0.x. If the installed shell disagrees, tru
     "defaultSection": "right",
     "defaults": { "interval": 5 },
     "schema": [
-      { "key": "interval", "type": "number", "label": "Refresh (s)", "defaultValue": 5,
-        "description": "Seconds between refreshes." }
+      { "key": "interval", "type": "integer", "label": "Refresh (s)", "defaultValue": 5,
+        "min": 1, "max": 600, "step": 1, "description": "Seconds between refreshes." }
     ]
   }
 }
 ```
 
-Validate with `omarchy plugin validate <dir>`.
+Validate with `omarchy plugin validate <dir>`. Setting types used by the built-in plugins: `string`, `integer`
+(with `min`/`max`/`step`), `boolean`, `path`, `enum` and `multiselect` (with `options`). Use `path` for folders.
+`grep -h '"type"' /usr/share/omarchy/shell/plugins/*/manifest.json` shows what the installed version uses.
+
+Settings reach the script only as arguments built in QML from `setting(...)`. `.forge/seed` cannot change them
+(they live in the user's global `shell.json`). If demo data needs a different value, let the script honor a
+plugin-local pointer file that seed writes and unseed deletes (for example `.forge/demo-root` overriding the
+`root` setting), and document it in the script docstring.
+
+Each plugin folder ships a `.gitignore` with `__pycache__/`: forge-check's test step creates it.
 
 ## BarWidget.qml: button + always-loaded panel
 

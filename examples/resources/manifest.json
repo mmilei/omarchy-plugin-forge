@@ -6,8 +6,13 @@
   "author": "mmilei",
   "license": "MIT",
   "description": "CPU and RAM percentages in the bar; the panel shows per-core CPU, RAM and swap, load, temperature and the top CPU processes, with a confirmed terminate action.",
-  "tags": ["system", "monitor"],
-  "kinds": ["bar-widget"],
+  "tags": [
+    "system",
+    "monitor"
+  ],
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
@@ -24,17 +29,23 @@
     "schema": [
       {
         "key": "interval",
-        "type": "number",
+        "type": "integer",
         "label": "Refresh (s)",
         "defaultValue": 2,
-        "description": "Seconds between samples of /proc."
+        "description": "Seconds between samples of /proc.",
+        "min": 1,
+        "max": 600,
+        "step": 1
       },
       {
         "key": "processCount",
-        "type": "number",
+        "type": "integer",
         "label": "Top processes",
         "defaultValue": 5,
-        "description": "How many CPU-hungry processes the panel lists."
+        "description": "How many CPU-hungry processes the panel lists.",
+        "min": 1,
+        "max": 20,
+        "step": 1
       }
     ]
   }

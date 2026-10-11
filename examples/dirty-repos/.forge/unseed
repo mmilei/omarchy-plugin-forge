@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Removes exactly what .forge/seed made: the temp dir and the demo-root pointer.
+here=$(cd "$(dirname "$0")" && pwd)
+state=${DIRTY_REPOS_FORGE_STATE:-${XDG_RUNTIME_DIR:-/tmp}/mmilei.dirty-repos-forge}
+rm -f "$here/demo-root"
+rm -rf "$state"

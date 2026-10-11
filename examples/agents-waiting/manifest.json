@@ -6,8 +6,13 @@
   "author": "mmilei",
   "license": "MIT",
   "description": "Lights up the bar when a Claude Code session is waiting for you; the panel lists the sessions and focuses the terminal of the one you click.",
-  "tags": ["claude-code", "agents"],
-  "kinds": ["bar-widget"],
+  "tags": [
+    "claude-code",
+    "agents"
+  ],
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
@@ -23,10 +28,13 @@
     "schema": [
       {
         "key": "interval",
-        "type": "number",
+        "type": "integer",
         "label": "Refresh (s)",
         "defaultValue": 3,
-        "description": "Seconds between reads of the session state files."
+        "description": "Seconds between reads of the session state files.",
+        "min": 1,
+        "max": 600,
+        "step": 1
       }
     ]
   }

@@ -50,7 +50,8 @@ script's tests. Test every action subcommand, and say in the report which flows 
   bin/<name>.py        # data and actions; `snapshot` prints JSON; stdlib only
   .forge/seed, unseed  # optional: demo data for forge-check screenshots (reference/patterns.md)
   tests/test_<name>.py # unittest for the script
-  README.md            # what it does, install, settings
+  README.md            # what it does, requirements, install, settings
+  LICENSE, .gitignore  # the marketplace requires manifest, README and LICENSE at the repo root
 ```
 
 - **id:** `<owner>.<name>`, lowercase, dashes. Use the owner the user gives; otherwise `$USER`.

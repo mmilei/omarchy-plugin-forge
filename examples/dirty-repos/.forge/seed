@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Demo data for forge-check: throwaway repos in a temp dir (never the real ~/git), with local
+# bare "remotes", in each state the panel can show. The widget is pointed at them through
+# .forge/demo-root, which bin/dirty-repos.py reads in place of the "root" setting; the user's
+# real settings are not touched. .forge/unseed removes exactly these.
+here=$(cd "$(dirname "$0")" && pwd)
+state=${DIRTY_REPOS_FORGE_STATE:-${XDG_RUNTIME_DIR:-/tmp}/mmilei.dirty-repos-forge}
+rm -rf "$state"; mkdir -p "$state/repos" "$state/remotes" || exit 1
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_AUTHOR_NAME=demo \
+  GIT_AUTHOR_EMAIL=demo@example.com GIT_COMMITTER_NAME=demo GIT_COMMITTER_EMAIL=demo@example.com
+mk() {  # mk <name> [with-remote]
+  local r=$state/repos/$1
+  git init -q -b main "$r" || return 1
+  echo "$1" > "$r/README.md"; git -C "$r" add -A; git -C "$r" commit -qm init
+  if [[ ${2:-} ]]; then
+    git init -q --bare -b main "$state/remotes/$1.git"
+    git -C "$r" remote add origin "$state/remotes/$1.git"
+    git -C "$r" push -q -u origin main
+  fi
+}
+mk api-gateway 1;   for i in 1 2 3; do echo x > "$state/repos/api-gateway/f$i.txt"; done
+echo changed >> "$state/repos/api-gateway/README.md"
+mk landing-page 1;  for i in 1 2; do echo $i >> "$state/repos/landing-page/p.txt"; git -C "$state/repos/landing-page" add -A; git -C "$state/repos/landing-page" commit -qm "c$i"; done
+mk docs-site 1
+git -C "$state/repos/docs-site" checkout -q -b feature/search
+echo s > "$state/repos/docs-site/search.md"; git -C "$state/repos/docs-site" add -A; git -C "$state/repos/docs-site" commit -qm search
+git -C "$state/repos/docs-site" push -q -u origin feature/search
+git clone -q "$state/remotes/docs-site.git" "$state/other" && {
+  git -C "$state/other" checkout -q feature/search; echo n > "$state/other/n.md"
+  git -C "$state/other" add -A; git -C "$state/other" commit -qm remote-change; git -C "$state/other" push -q; }
+git -C "$state/repos/docs-site" fetch -q
+echo wip >> "$state/repos/docs-site/README.md"
+mk billing-service 1; mkdir -p "$state/repos/billing-service/src"
+git -C "$state/repos/billing-service" checkout -q -b fix/rounding
+echo r > "$state/repos/billing-service/src/r.txt"; git -C "$state/repos/billing-service" add -A
+git -C "$state/repos/billing-service" commit -qm rounding
+mk side-experiment                      # local only: no remote, clean -> not listed
+mk shipped 1                            # clean and pushed -> not listed
+git -C "$state/repos/shipped" checkout -q -b scratch   # never pushed, has a remote -> "no upstream"
+mk group/mobile-app 1; echo todo > "$state/repos/group/mobile-app/TODO.md"   # depth 2
+echo "$state/repos" > "$here/demo-root"

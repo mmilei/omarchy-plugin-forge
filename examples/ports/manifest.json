@@ -6,8 +6,13 @@
   "author": "mmilei",
   "license": "MIT",
   "description": "Shows how many TCP ports your processes are listening on; the panel lists port, process and project folder, and can open the port in the browser or stop the process.",
-  "tags": ["developer", "network"],
-  "kinds": ["bar-widget"],
+  "tags": [
+    "developer",
+    "network"
+  ],
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
@@ -23,10 +28,13 @@
     "schema": [
       {
         "key": "interval",
-        "type": "number",
+        "type": "integer",
         "label": "Refresh (s)",
         "defaultValue": 3,
-        "description": "Seconds between port scans."
+        "description": "Seconds between port scans.",
+        "min": 1,
+        "max": 600,
+        "step": 1
       }
     ]
   }
