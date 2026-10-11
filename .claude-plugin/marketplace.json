@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "omarchy-plugin-forge",
+  "owner": {
+    "name": "mmilei"
+  },
+  "plugins": [
+    {
+      "name": "omarchy-plugin-forge",
+      "source": "./",
+      "description": "Build Omarchy 4 bar-widget plugins from a one-line idea, checked by a script until they load clean and follow the theme.",
+      "version": "0.1.0",
+      "license": "MIT"
+    }
+  ]
+}

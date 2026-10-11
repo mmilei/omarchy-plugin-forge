@@ -1,0 +1,12 @@
+{
+  "name": "omarchy-plugin-forge",
+  "version": "0.1.0",
+  "description": "Build Omarchy 4 bar-widget plugins from a one-line idea, checked by a script until they load clean and follow the theme.",
+  "author": {
+    "name": "mmilei"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/mmilei/omarchy-plugin-forge",
+  "repository": "https://github.com/mmilei/omarchy-plugin-forge",
+  "keywords": ["omarchy", "hyprland", "quickshell", "qml", "plugin", "skill"]
+}
