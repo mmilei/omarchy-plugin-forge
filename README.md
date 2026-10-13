@@ -107,8 +107,6 @@ The first plugin was a personal GTD panel: the day's tasks in the bar, a popup w
 and a one-click done, all read from a folder of markdown notes. Building it by hand surfaced most of the traps
 now in `reference/gotchas.md`, and turning those notes into a skill was the obvious next step.
 
-![The GTD panel that started it, with demo data](docs/gtd-panel.png)
-
 ## Layout
 
 ```
